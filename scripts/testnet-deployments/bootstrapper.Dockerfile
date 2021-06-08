@@ -5,7 +5,7 @@ FROM ubuntu:20.04
 
 ARG build_type
 
-EXPOSE 8888 # listen port
+EXPOSE 8888
 
 # TODO only install actually used packages.
 RUN apt-get update && \

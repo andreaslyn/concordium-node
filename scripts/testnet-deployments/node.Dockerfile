@@ -5,9 +5,12 @@ FROM ubuntu:20.04
 
 ARG build_type
 
-EXPOSE 8888  # listen port
-EXPOSE 9090  # prometheus
-EXPOSE 10000 # GRPC
+# P2P listen port.
+EXPOSE 8888
+# Prometheus port.
+EXPOSE 9090
+# GRPC port.
+EXPOSE 10000
 
 # TODO only install actually used packages.
 RUN apt-get update && \

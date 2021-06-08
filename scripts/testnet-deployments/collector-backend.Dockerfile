@@ -5,7 +5,7 @@ FROM ubuntu:20.04
 
 ARG build_type
 
-EXPOSE 8080 # listen port
+EXPOSE 8080
 
 # TODO only install actually used packages.
 RUN apt-get update && \
