@@ -5,12 +5,7 @@ FROM ubuntu:20.04
 
 ARG build_type
 
-# TODO only list actually used ports
-EXPOSE 8950
-EXPOSE 8888
-EXPOSE 9090
-EXPOSE 8900
-EXPOSE 10000
+EXPOSE 8080 # listen port
 
 # TODO only install actually used packages.
 RUN apt-get update && \

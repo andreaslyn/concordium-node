@@ -31,15 +31,14 @@ RUN GENESIS_DIR=./out/genesis-5-bakers NUM_BAKERS=5 python3 generate-test-genesi
 RUN GENESIS_DIR=./out/genesis-10-bakers NUM_BAKERS=10 python3 generate-test-genesis.py
 RUN GENESIS_DIR=./out/genesis-25-bakers NUM_BAKERS=25 python3 generate-test-genesis.py
 
-
-# Build static consensus libraries
+# Build static consensus libraries.
 FROM concordium/static-libraries:0.19 as static-builder
 COPY scripts/static-libraries/build-static-libraries.sh /build-static-libraries.sh
 COPY . /build
 ARG ghc_version
 RUN GHC_VERSION="${ghc_version}" ./build-static-libraries.sh
 
-# And build the node
+# Build binaries.
 FROM concordium/base:0.19 as build
 
 ARG ghc_version

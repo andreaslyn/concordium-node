@@ -13,7 +13,11 @@ pipeline {
     stages {
         stage('ecr-login') {
             steps {
-                sh '$(aws --region eu-west-1 ecr get-login | sed -e \'s/-e none//g\')'
+                sh 'aws ecr get-login-password \
+                        --region eu-west-1 \
+                    | docker login \
+                        --username AWS \
+                        --password-stdin 192549843005.dkr.ecr.eu-west-1.amazonaws.com'
             }
         }
 

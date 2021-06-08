@@ -1,26 +1,35 @@
+ARG static_libraries_image_tag
 ARG base_image_tag
+
+# Build static consensus libraries.
+FROM concordium/static-libraries:${static_libraries_image_tag} as static-builder
+COPY scripts/static-libraries/build-static-libraries.sh /build-static-libraries.sh
+COPY . /build
+ARG ghc_version
+RUN GHC_VERSION="${ghc_version}" \
+        ./build-static-libraries.sh
+
+# Build binaries.
 FROM concordium/base:${base_image_tag} as build
-COPY . /build-project
-WORKDIR /build-project
-
-RUN ./scripts/download-static-libs.sh # TODO build in place
-
+COPY . /build
 # Build in both release and debug mode.
 ARG consensus_profiling=false
 ENV CONSENSUS_PROFILING=$consensus_profiling
-RUN ./scripts/build-binaries.sh "instrumentation,collector" "release" && \
-    ./scripts/build-binaries.sh "instrumentation,collector" && \
+RUN /build/scripts/build-binaries.sh "instrumentation,collector" "release" && \
     mkdir -p /out/release && \
+    cp /build/concordium-node/target/release/concordium-node \
+       /build/concordium-node/target/release/p2p_bootstrapper-cli \
+       /build/concordium-node/target/release/node-collector \
+       /build/concordium-node/target/release/node-collector-backend \
+       /out/release/ && \
+    /build/scripts/build-binaries.sh "instrumentation,collector" && \
     mkdir -p /out/debug && \
-    cp concordium-node/target/release/concordium-node \
-       concordium-node/target/release/p2p_bootstrapper-cli \
-       concordium-node/target/release/node-collector \
-       concordium-node/target/release/node-collector-backend /out/release/ && \
-    cp concordium-node/target/debug/concordium-node \
-       concordium-node/target/debug/p2p_bootstrapper-cli \
-       concordium-node/target/debug/node-collector \
-       concordium-node/target/debug/node-collector-backend /out/debug/ && \
-    cp scripts/start.sh /out/start.sh
+    cp /build/concordium-node/target/debug/concordium-node \
+       /build/concordium-node/target/debug/p2p_bootstrapper-cli \
+       /build/concordium-node/target/debug/node-collector \
+       /build/concordium-node/target/debug/node-collector-backend \
+       /out/debug/ && \
+    cp /build/scripts/start.sh /out/start.sh
 
 FROM ubuntu:20.04
 COPY --from=build /out /out
