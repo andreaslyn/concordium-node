@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:experimental
-
 ARG universal_image_name
 
 FROM $universal_image_name AS build

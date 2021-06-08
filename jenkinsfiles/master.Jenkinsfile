@@ -67,17 +67,11 @@ pipeline {
             steps {
                 sshagent (credentials: ['jenkins-gitlab-ssh']) {
                     sh '''\
-                        # Using '--no-cache' because we're cloning genesis data
-                        # and BuildKit (and '--ssh default') because the repo is on GitLab.
-                        DOCKER_BUILDKIT=1 docker build \
+                        docker build \
                           --build-arg universal_image_name="${universal_image_name}" \
                           --build-arg build_type="${BUILD_TYPE}" \
-                          --build-arg genesis_ref="${genesis_ref}" \
-                          --build-arg genesis_path="${genesis_path}" \
                           --label universal_image_name="${universal_image_name}" \
                           --label build_type="${BUILD_TYPE}" \
-                          --label genesis_ref="${genesis_ref}" \
-                          --label genesis_path="${genesis_path}" \
                           -t "${image_name}" \
                           -f scripts/testnet-deployments/node.Dockerfile \
                           --ssh default \
