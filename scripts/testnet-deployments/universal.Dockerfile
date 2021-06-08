@@ -1,20 +1,19 @@
-ARG static_libraries_image_tag
 ARG base_image_tag
+ARG static_libraries_image_tag
 
 # Build static consensus libraries.
 FROM concordium/static-libraries:${static_libraries_image_tag} as static-builder
-COPY scripts/static-libraries/build-static-libraries.sh /build-static-libraries.sh
 COPY . /build
 ARG ghc_version
 RUN GHC_VERSION="${ghc_version}" \
-        ./build-static-libraries.sh
+        /build/scripts/build-static-libraries.sh
 
 # Build binaries.
 FROM concordium/base:${base_image_tag} as build
 COPY . /build
 # Build in both release and debug mode.
 ARG consensus_profiling=false
-ENV CONSENSUS_PROFILING=$consensus_profiling
+ENV CONSENSUS_PROFILING="${consensus_profiling}"
 RUN /build/scripts/build-binaries.sh "instrumentation,collector" "release" && \
     mkdir -p /out/release && \
     cp /build/concordium-node/target/release/concordium-node \

@@ -2,6 +2,11 @@
 
 ## Unreleased changes
 
+## concordium-node 1.0.1
+
+- Check that baker keys are consistent (private key matches the public one) on startup.
+- Prevent rebroadcast of catch-up status messages.
+
 ## concordium-node 1.0.0
 
 - Expose accountIndex in the `getAccountInfo` query.
