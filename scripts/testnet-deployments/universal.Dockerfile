@@ -27,18 +27,10 @@ ARG consensus_profiling=false
 ENV CONSENSUS_PROFILING="${consensus_profiling}"
 RUN /build/scripts/build-binaries.sh "instrumentation,collector" "release" && \
     mkdir -p /out/release && \
-    cp /build/concordium-node/target/release/concordium-node \
-       /build/concordium-node/target/release/p2p_bootstrapper-cli \
-       /build/concordium-node/target/release/node-collector \
-       /build/concordium-node/target/release/node-collector-backend \
-       /out/release/ && \
+    cp /build/concordium-node/target/release/{concordium-node,p2p_bootstrapper-cli,node-collector,node-collector-backend} /out/release/ && \
     /build/scripts/build-binaries.sh "instrumentation,collector" && \
     mkdir -p /out/debug && \
-    cp /build/concordium-node/target/debug/concordium-node \
-       /build/concordium-node/target/debug/p2p_bootstrapper-cli \
-       /build/concordium-node/target/debug/node-collector \
-       /build/concordium-node/target/debug/node-collector-backend \
-       /out/debug/ && \
+    cp /build/concordium-node/target/debug/{concordium-node,p2p_bootstrapper-cli,node-collector,node-collector-backend} /out/debug/ && \
     cp /build/scripts/start.sh /out/start.sh
 
 FROM ubuntu:20.04

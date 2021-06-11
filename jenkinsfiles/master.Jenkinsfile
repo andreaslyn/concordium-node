@@ -74,8 +74,6 @@ pipeline {
                           --label build_type="${BUILD_TYPE}" \
                           -t "${image_name}" \
                           -f scripts/testnet-deployments/node.Dockerfile \
-                          --ssh default \
-                          --no-cache \
                           .
                         docker push "${image_name}"
                     '''
