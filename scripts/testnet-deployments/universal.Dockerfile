@@ -25,6 +25,8 @@ RUN tar -C /tmp -xf /tmp/static-consensus.tar.gz && \
 # Build in both release and debug mode.
 ARG consensus_profiling=false
 ENV CONSENSUS_PROFILING="${consensus_profiling}"
+# Enable brace expansion in the following 'RUN' directive.
+SHELL ["/bin/bash", "-c"]
 RUN /build/scripts/build-binaries.sh "instrumentation,collector" "release" && \
     mkdir -p /out/release && \
     cp /build/concordium-node/target/release/{concordium-node,p2p_bootstrapper-cli,node-collector,node-collector-backend} /out/release/ && \

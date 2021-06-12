@@ -33,6 +33,8 @@ services:
     container_name: node-init-genesis
     environment:
     - DATA_DIR=/data
+    networks:
+    - none
     volumes:
     - data:/data
   node:
