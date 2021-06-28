@@ -62,7 +62,7 @@ pub struct NodeConfig {
     pub no_clear_bans: bool,
     pub bootstrap_server: Option<String>,
     pub dns_resolvers: Vec<String>,
-    pub dnssec_disabled: bool,
+    pub require_dnssec: bool,
     pub disallow_multiple_peers_on_ip: bool,
     pub bootstrap_nodes: Vec<String>,
     /// Nodes to try and keep the connections to. A node will maintain two
@@ -111,21 +111,21 @@ pub struct ConnChanges {
 
 /// The set of objects related to node's connections.
 pub struct ConnectionHandler {
-    pub socket_server: TcpListener,
-    pub next_token: AtomicUsize,
-    pub buckets: RwLock<Buckets>,
+    pub socket_server:        TcpListener,
+    pub next_token:           AtomicUsize,
+    pub buckets:              RwLock<Buckets>,
     #[cfg(feature = "network_dump")]
-    pub log_dumper: RwLock<Option<Sender<DumpItem>>>,
-    pub conn_candidates: Mutex<Connections>,
-    pub connections: RwLock<Connections>,
-    pub conn_changes: ConnChanges,
-    pub soft_bans: RwLock<HashMap<BanId, Instant>>, // (id, expiry)
-    pub networks: RwLock<Networks>,
+    pub log_dumper:           RwLock<Option<Sender<DumpItem>>>,
+    pub conn_candidates:      Mutex<Connections>,
+    pub connections:          RwLock<Connections>,
+    pub conn_changes:         ConnChanges,
+    pub soft_bans:            RwLock<HashMap<BanId, Instant>>, // (id, expiry)
+    pub networks:             RwLock<Networks>,
     pub deduplication_queues: DeduplicationQueues,
-    pub last_bootstrap: AtomicU64,
-    pub last_peer_update: AtomicU64,
-    pub total_received: AtomicU64,
-    pub total_sent: AtomicU64,
+    pub last_bootstrap:       AtomicU64,
+    pub last_peer_update:     AtomicU64,
+    pub total_received:       AtomicU64,
+    pub total_sent:           AtomicU64,
 }
 
 impl ConnectionHandler {
@@ -212,9 +212,9 @@ pub struct BadEvents {
     pub dropped_high_queue: Mutex<HashMap<RemotePeerId, u64>>,
     /// Number of low priority messages that were dropped because they could not
     /// be enqueued.
-    pub dropped_low_queue: Mutex<HashMap<RemotePeerId, u64>>,
+    pub dropped_low_queue:  Mutex<HashMap<RemotePeerId, u64>>,
     /// Number of invalid messages received from the given peer.
-    pub invalid_messages: Mutex<HashMap<RemotePeerId, u64>>,
+    pub invalid_messages:   Mutex<HashMap<RemotePeerId, u64>>,
 }
 
 impl BadEvents {
@@ -240,27 +240,27 @@ impl BadEvents {
 /// The central object belonging to a node in the network; it handles
 /// connectivity and contains the metadata, statistics etc.
 pub struct P2PNode {
-    pub self_peer: P2PPeer,
+    pub self_peer:          P2PPeer,
     /// Holds the handles to threads spawned by the node.
-    pub threads: RwLock<Vec<JoinHandle<()>>>,
+    pub threads:            RwLock<Vec<JoinHandle<()>>>,
     /// The handle to the poll registry.
-    pub poll_registry: Registry,
+    pub poll_registry:      Registry,
     pub connection_handler: ConnectionHandler,
     #[cfg(feature = "network_dump")]
-    pub network_dumper: NetworkDumper,
-    pub stats: Arc<StatsExportService>,
-    pub config: NodeConfig,
+    pub network_dumper:     NetworkDumper,
+    pub stats:              Arc<StatsExportService>,
+    pub config:             NodeConfig,
     /// The time the node was launched.
-    pub start_time: DateTime<Utc>,
+    pub start_time:         DateTime<Utc>,
     /// The flag indicating whether a node should shut down.
-    pub is_terminated: AtomicBool,
+    pub is_terminated:      AtomicBool,
     /// The key-value store holding the node's persistent data.
-    pub kvs: Arc<RwLock<Rkv<LmdbEnvironment>>>,
+    pub kvs:                Arc<RwLock<Rkv<LmdbEnvironment>>>,
     /// The catch-up list of peers.
-    pub peers: RwLock<PeerList>,
+    pub peers:              RwLock<PeerList>,
     /// Cache of bad events that we report on each connection housekeeping
     /// interval to avoid spamming the logs in case of failure.
-    pub bad_events: BadEvents,
+    pub bad_events:         BadEvents,
 }
 
 impl P2PNode {
@@ -333,7 +333,7 @@ impl P2PNode {
             no_clear_bans: conf.connection.no_clear_bans,
             bootstrap_server: conf.connection.bootstrap_server.clone(),
             dns_resolvers,
-            dnssec_disabled: conf.connection.dnssec_disabled,
+            require_dnssec: conf.connection.require_dnssec,
             disallow_multiple_peers_on_ip: conf.connection.disallow_multiple_peers_on_ip,
             bootstrap_nodes: conf.connection.bootstrap_nodes.clone(),
             given_addresses,
@@ -853,7 +853,7 @@ pub fn attempt_bootstrap(node: &Arc<P2PNode>) {
         let bootstrap_nodes = utils::get_bootstrap_nodes(
             node.config.bootstrap_server.as_deref(),
             &node.config.dns_resolvers,
-            node.config.dnssec_disabled,
+            node.config.require_dnssec,
             &node.config.bootstrap_nodes,
         );
 
@@ -893,8 +893,7 @@ fn parse_config_nodes(
 ) -> anyhow::Result<HashSet<SocketAddr>> {
     let mut out = HashSet::new();
     for connect_to in &conf.connect_to {
-        let new_addresses =
-            utils::parse_host_port(connect_to, dns_resolvers, conf.dnssec_disabled)?;
+        let new_addresses = utils::parse_host_port(connect_to, dns_resolvers, conf.require_dnssec)?;
         out.extend(new_addresses)
     }
     Ok(out)
