@@ -71,6 +71,13 @@ default-extensions:
 - TupleSections
 
 flags:
+  # If this is set then test binaries will be built. This is optional since they
+  # do take a long time to build, and if the package is only used as a library
+  # then there is no need to build them.
+  build-binaries:
+    manual: True
+    default: False
+
   dynamic:
     manual: True
     default: True
@@ -126,6 +133,13 @@ executables:
                 ghc-options: -dynamic
               else:
                 ghc-options: -static
+
+      - condition: flag(build-binaries)
+        then:
+          buildable: true
+        else:
+          buildable: false
+
     dependencies:
       - concordium-consensus
 
@@ -149,6 +163,13 @@ executables:
                 ghc-options: -dynamic
               else:
                 ghc-options: -static
+
+      - condition: flag(build-binaries)
+        then:
+          buildable: true
+        else:
+          buildable: false
+
     dependencies:
       - concordium-consensus
       - criterion >= 1.5
@@ -174,6 +195,13 @@ executables:
                 ghc-options: -dynamic
               else:
                 ghc-options: -static
+
+      - condition: flag(build-binaries)
+        then:
+          buildable: true
+        else:
+          buildable: false
+
     dependencies:
     - concordium-consensus
 
@@ -198,6 +226,13 @@ executables:
                 ghc-options: -dynamic
               else:
                 ghc-options: -static
+
+      - condition: flag(build-binaries)
+        then:
+          buildable: true
+        else:
+          buildable: false
+
     dependencies:
     - concordium-consensus
     - clock
@@ -221,6 +256,13 @@ executables:
                 ghc-options: -dynamic
               else:
                 ghc-options: -static
+
+      - condition: flag(build-binaries)
+        then:
+          buildable: true
+        else:
+          buildable: false
+
     dependencies:
     - concordium-consensus
     - optparse-applicative >= 0.15
