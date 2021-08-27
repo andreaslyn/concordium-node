@@ -42,6 +42,7 @@ module Concordium.GlobalState.Persistent.LMDB (
   , writeFinalizationRecord
   , writeTransactionStatus
   , writeTransactionStatuses
+  , rollBackToFinalizationIndex
   ) where
 
 import Concordium.GlobalState.LMDB.Helpers
@@ -59,6 +60,7 @@ import Control.Monad.Catch (tryJust, handleJust, MonadCatch)
 import Control.Monad.IO.Class
 import Control.Monad
 import Control.Monad.State
+import Control.Monad.Trans.Except
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Serialize as S
@@ -596,3 +598,48 @@ writeTransactionStatuses tss = resizeOnFull tssSize
     $ \txn -> forM_ tss (\(tHash, tStatus) -> storeReplaceRecord txn (dbh ^. transactionStatusStore) tHash tStatus)
   where
     tssSize = (Prelude.length tss) * (2 * digestSize + 16)
+
+-- |Delete finalized blocks and finalization records later than the given finalization index.
+-- Transactions associated with the deleted blocks are also deleted.  If successful, the result
+-- is the number of blocks that were removed.  If unsuccessful, the result is a string describing
+-- the error, and the transaction is aborted (so no changes occur).
+--
+-- *This must not be used while the database is in use, as it violates the invariant that the
+-- database always grows.*
+rollBackToFinalizationIndex :: (IsProtocolVersion pv, S.Serialize st)
+  => DatabaseHandlers pv st
+  -> FinalizationIndex
+  -> IO (Either String Word)
+rollBackToFinalizationIndex dbh finIndex =
+  abortableTransaction (dbh ^. storeEnv) False $ \txn -> runExceptT $ do
+    let 
+        deleteFinalizationRecords = do
+          mLastFin <- withCursor txn (dbh ^. finalizationRecordStore) $ getCursor CursorLast
+          case mLastFin of
+            Just (Right (curFinIndex, finRec)) -> if curFinIndex <= finIndex then
+                return (Right finRec)
+              else do
+                _ <- deleteRecord txn (dbh ^. finalizationRecordStore) curFinIndex
+                deleteFinalizationRecords
+            Just (Left s) -> return $ Left $ "Could not read last finalization record: " ++ s
+            Nothing -> return $ Left "No last finalization record found"
+    finRec <- ExceptT deleteFinalizationRecords
+    let
+        deleteBlocksAndTransactions blockCount = do
+          mLastBlock <- withCursor txn (dbh ^. finalizedByHeightStore) $ getCursor CursorLast
+          case mLastBlock of
+            Just (Right (blockHeight, blockHash)) -> do
+              if blockHash == finalizationBlockPointer finRec then
+                return $ Right blockCount
+              else do
+                _ <- deleteRecord txn (dbh ^. finalizedByHeightStore) blockHeight
+                loadRecord txn (dbh ^. blockStore) (finalizationBlockPointer finRec) >>= \case
+                  Just block -> do
+                    let transactions = blockTransactions $ sbBlock block
+                    mapM_ (deleteRecord txn (dbh ^. transactionStatusStore) . getHash) transactions
+                    deleteBlocksAndTransactions $! blockCount + 1
+                  Nothing -> return $ Left "Could not read finalized block"
+            Just (Left s) -> return $ Left $ "Could not find last finalized block: " ++ s
+            Nothing -> return $ Left "No last finalized block found"
+    ExceptT (deleteBlocksAndTransactions 0)
+

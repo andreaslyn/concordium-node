@@ -82,6 +82,25 @@ transaction env readOnly tx
         | readOnly = id
         | otherwise = runInBoundThread
 
+-- |Run a transaction in an LMDB environment.  The second argument
+-- specifies if the transaction is read-only.  If the transaction
+-- body returns a 'Left' value, the transaction will be aborted;
+-- otherwise, it will be committed.
+abortableTransaction :: MDB_env -> Bool -> (MDB_txn -> IO (Either e a)) -> IO (Either e a)
+abortableTransaction env readOnly tx
+  = threadRun $ mask $ \unmask -> do
+      txn <- mdb_txn_begin env Nothing readOnly
+      res <- unmask (tx txn) `onException` mdb_txn_abort txn
+      case res of
+        Left _ -> mdb_txn_abort txn
+        Right _ -> mdb_txn_commit txn
+      return res
+  where
+    threadRun
+        | readOnly = id
+        | otherwise = runInBoundThread
+
+
 -- |Use a 'ByteString' as an 'MDB_val'.  This uses 'BS.unsafeUseAsCStringLen',
 -- which means some caveats apply.  If the string is zero-length, the pointer
 -- is not required to be valid (and may be null).  The data at the pointer
@@ -263,6 +282,22 @@ loadRecord txn dbi key = do
       Just bval -> decodeValue prox bval >>= \case
         Left _ -> return Nothing
         Right val -> return (Just val)
+  where
+    prox :: Proxy db
+    prox = Proxy
+
+-- |Delete the record(s) with a given key.
+-- The return value indicates whether the record was present.
+deleteRecord :: forall db. (MDBDatabase db)
+  => MDB_txn
+  -- ^Transaction
+  -> db
+  -- ^Table
+  -> DBKey db
+  -- ^Key
+  -> IO Bool
+deleteRecord txn dbi key =
+    withMDB_val (encodeKey prox key) $ \k -> mdb_del' txn (mdbDatabase dbi) k Nothing
   where
     prox :: Proxy db
     prox = Proxy
