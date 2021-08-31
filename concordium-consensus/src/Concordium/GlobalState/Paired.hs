@@ -589,6 +589,10 @@ instance (MonadLogger m,
         bs1' <- coerceBSML $ cacheBlockState bs1
         bs2' <- coerceBSMR $ cacheBlockState bs2
         return (bs1', bs2')
+    fullLoadBlockState (p1, p2) = do
+        bs1 <- coerceBSML $ fullLoadBlockState p1
+        bs2 <- coerceBSMR $ fullLoadBlockState p2
+        return (bs1, bs2)
     serializeBlockState (bps1, bps2) = do
         s1 <- coerceBSML (serializeBlockState bps1)
         s2 <- coerceBSMR (serializeBlockState bps2)

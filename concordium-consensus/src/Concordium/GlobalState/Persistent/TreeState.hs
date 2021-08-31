@@ -30,7 +30,7 @@ import Concordium.Types
 import Concordium.Types.HashableTo
 import Concordium.Types.Transactions as T
 import Concordium.Types.Updates
-import Control.Exception hiding (handle, throwIO)
+import Control.Exception hiding (handle)
 import Control.Monad.Reader
 import Control.Monad.State
 import qualified Data.HashMap.Strict as HM
@@ -70,9 +70,12 @@ data InitException =
       -- |Hash of genesis as in the database.
       ieIs :: !BlockHash
       }
+  -- |A database invariant was found not to hold.
   | DatabaseInvariantViolation !String
   -- |The database version is not correct.
   | IncorrectDatabaseVersion !String
+  -- |Rolling back the last finalized block failed.
+  | RollbackError !String
   deriving(Show, Typeable)
 
 instance Exception InitException where
@@ -86,6 +89,7 @@ instance Exception InitException where
   displayException (DatabaseInvariantViolation err) =
     "Database invariant violation: " ++ err
   displayException (IncorrectDatabaseVersion err) = "Incorrect database version: " ++ err
+  displayException (RollbackError err) = "The tree state could not be rolled back: " ++ err
 
 logExceptionAndThrowTS :: (MonadLogger m, MonadIO m, Exception e) => e -> m a
 logExceptionAndThrowTS = logExceptionAndThrow TreeState
@@ -265,6 +269,10 @@ checkExistingDatabase treeStateDir blockStateFile = do
      | otherwise ->
          return False
 
+-- |The maximum number of finalizations to roll back.
+rollbackLimit :: Word
+rollbackLimit = 100
+
 -- |Try to load an existing instance of skov persistent data.
 -- This function will raise an exception if it detects invariant violation in the
 -- existing state.
@@ -308,17 +316,34 @@ loadSkovPersistentData rp _treeStateDirectory _genesisData pbsc atiContext = do
     GenesisBlock gd' -> unless (_genesisData == gd') $ logExceptionAndThrowTS (GenesisBlockIncorrect (getHash _genesisBlockPointer))
     _ -> logExceptionAndThrowTS (DatabaseInvariantViolation "Block at height 0 is not a genesis block.")
 
+  -- Get the last finalized block.
+  let recoverLastFinalizedBlock _ (Left s) = logExceptionAndThrowTS $ DatabaseInvariantViolation s
+      recoverLastFinalizedBlock !rollbackLength (Right (_lastFinalizationRecord, lfStoredBlock)) =
+        liftIO (try (makeBlockPointerCached lfStoredBlock)) >>= \case
+          Left (e :: SomeException) -> do
+            logEvent TreeState LLWarning $ "Unable to recover state for block " ++ show (finalizationBlockPointer _lastFinalizationRecord)
+            if rollbackLength < rollbackLimit && finalizationIndex _lastFinalizationRecord > 0 then
+              liftIO (getBlockAtFinalizationIndex _db (finalizationIndex _lastFinalizationRecord - 1)) >>=
+                recoverLastFinalizedBlock (rollbackLength + 1)
+            else do
+              logEvent TreeState LLError "Reached the rollback limit while trying to recover a usuable last finalized block."
+              liftIO $ throwIO e
+          Right Nothing -> logExceptionAndThrowTS $ DatabaseInvariantViolation "Last finalized block's state hash does not match the computed value."
+          Right (Just _lastFinalized) -> do
+            when (rollbackLength > 0) $ do
+              logEvent TreeState LLInfo $ "Rolling back " ++ show rollbackLength ++ " finalizations to block " ++ show _lastFinalized
+              liftIO (rollBackToFinalizationIndex _db (finalizationIndex _lastFinalizationRecord)) >>= \case
+                Left e -> logExceptionAndThrowTS $ RollbackError e
+                Right blocksRolledBack -> do
+                  logEvent TreeState LLInfo $ "Rolled back " ++ show blocksRolledBack ++ " finalized blocks."
+            return (_lastFinalizationRecord, _lastFinalized)
+  (_lastFinalizationRecord, _lastFinalized) <- recoverLastFinalizedBlock 0 =<< liftIO (getLastBlock _db)
+  let lastState = _bpState _lastFinalized
+
   -- Populate the block table.
   _blockTable <- liftIO (loadBlocksFinalizationIndexes _db) >>= \case
       Left s -> logExceptionAndThrowTS $ DatabaseInvariantViolation s
       Right hm -> return $! HM.map BlockFinalized hm
-
-  -- Get the last finalized block.
-  (_lastFinalizationRecord, lfStoredBlock) <- liftIO (getLastBlock _db) >>= \case
-      Left s -> logExceptionAndThrowTS $ DatabaseInvariantViolation s
-      Right r -> return r
-  _lastFinalized <- liftIO (makeBlockPointerCached lfStoredBlock)
-  let lastState = _bpState _lastFinalized
 
   -- The final thing we need to establish is the transaction table invariants.
   -- This specifically means for each account we need to determine the next available nonce.
@@ -362,10 +387,13 @@ loadSkovPersistentData rp _treeStateDirectory _genesisData pbsc atiContext = do
     makeBlockPointer StoredBlock{..} = do
       bstate <- runReaderT (PBS.runPersistentBlockStateMonad (loadBlockState (blockStateHash sbBlock) sbState)) pbsc
       makeBlockPointerFromPersistentBlock sbBlock bstate defaultValue sbInfo
-    makeBlockPointerCached :: StoredBlock pv (TS.BlockStatePointer (PBS.PersistentBlockState pv)) -> IO (PersistentBlockPointer pv (ATIValues ati) (PBS.HashedPersistentBlockState pv))
+    makeBlockPointerCached :: StoredBlock pv (TS.BlockStatePointer (PBS.PersistentBlockState pv)) -> IO (Maybe (PersistentBlockPointer pv (ATIValues ati) (PBS.HashedPersistentBlockState pv)))
     makeBlockPointerCached StoredBlock{..} = do
-      bstate <- runReaderT (PBS.runPersistentBlockStateMonad (cacheBlockState =<< loadBlockState (blockStateHash sbBlock) sbState)) pbsc
-      makeBlockPointerFromPersistentBlock sbBlock bstate defaultValue sbInfo
+      bstate <- runReaderT (PBS.runPersistentBlockStateMonad (fullLoadBlockState sbState)) pbsc
+      if PBS.hpbsHash bstate == blockStateHash sbBlock then
+        Just <$> makeBlockPointerFromPersistentBlock sbBlock bstate defaultValue sbInfo
+      else
+        return Nothing
 
 -- |Close the database associated with a 'SkovPersistentData'.
 -- The database should not be used after this.
@@ -496,9 +524,9 @@ instance (MonadLogger (PersistentTreeStateMonad pv ati bs m),
                   (Just sb, Just finr) -> do
                     block <- constructBlock sb
                     return $ Just (TS.BlockFinalized block finr)
-                  (Just _, Nothing) -> logErrorAndThrowTS $ "Lost finalization record that was stored" ++ show bh
-                  (Nothing, Just _) -> logErrorAndThrowTS $ "Lost block that was stored as finalized" ++ show bh
-                  _ -> logErrorAndThrowTS $ "Lost block and finalization record" ++ show bh
+                  (Just _, Nothing) -> logErrorAndThrowTS $ "Lost finalization record that was stored for block " ++ show bh
+                  (Nothing, Just _) -> logErrorAndThrowTS $ "Lost block that was stored as finalized: " ++ show bh
+                  _ -> logErrorAndThrowTS $ "Lost block and finalization record: " ++ show bh
     makeLiveBlock block parent lastFin st ati arrTime energy = do
             blockP <- makePersistentBlockPointerFromPendingBlock block parent lastFin st ati arrTime energy
             blockTable . at' (getHash block) ?=! BlockAlive blockP

@@ -1361,6 +1361,11 @@ instance (IsProtocolVersion pv, PersistentState r m) => BlockStateStorage (Persi
         liftIO $ writeIORef hpbsPointers bsp'
         return pbs
 
+    fullLoadBlockState ref = do
+        bsp0 <- cache $ BRBlobbed ref
+        pbs <- liftIO $ newIORef bsp0
+        hashBlockState pbs
+
     serializeBlockState hpbs = do
         p <- runPutT (putBlockStateV0 (hpbsPointers hpbs))
         return $ runPut p

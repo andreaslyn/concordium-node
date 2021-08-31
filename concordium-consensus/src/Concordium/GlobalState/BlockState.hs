@@ -603,6 +603,9 @@ class (BlockStateOperations m, Serialize (BlockStateRef m)) => BlockStateStorage
     -- (where applicable).
     cacheBlockState :: BlockState m -> m (BlockState m)
 
+    -- |Load a block state from a reference, caching it and computing the hash.
+    fullLoadBlockState :: BlockStateRef m -> m (BlockState m)
+
     -- |Serialize the block state to a byte string.
     -- This serialization does not include transaction outcomes.
     serializeBlockState :: BlockState m -> m BS.ByteString
@@ -786,6 +789,7 @@ instance (Monad (t m), MonadTrans t, BlockStateStorage m) => BlockStateStorage (
     saveBlockState = lift . saveBlockState
     loadBlockState hsh = lift . loadBlockState hsh
     cacheBlockState = lift . cacheBlockState
+    fullLoadBlockState = lift . fullLoadBlockState
     serializeBlockState = lift . serializeBlockState
     writeBlockState fh bs = lift $ writeBlockState fh bs
     {-# INLINE thawBlockState #-}
@@ -796,6 +800,7 @@ instance (Monad (t m), MonadTrans t, BlockStateStorage m) => BlockStateStorage (
     {-# INLINE saveBlockState #-}
     {-# INLINE loadBlockState #-}
     {-# INLINE cacheBlockState #-}
+    {-# INLINE fullLoadBlockState #-}
     {-# INLINE serializeBlockState #-}
     {-# INLINE writeBlockState #-}
 

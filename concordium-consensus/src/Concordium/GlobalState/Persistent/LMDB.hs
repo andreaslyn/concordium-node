@@ -38,6 +38,7 @@ module Concordium.GlobalState.Persistent.LMDB (
   , getFinalizedBlockAtHeight
   , getLastBlock
   , getFirstBlock
+  , getBlockAtFinalizationIndex
   , writeBlock
   , writeFinalizationRecord
   , writeTransactionStatus
@@ -527,6 +528,19 @@ getFirstBlock dbh = transaction (dbh ^. storeEnv) True $ \txn -> do
         mbHash <- loadRecord txn (dbh ^. finalizedByHeightStore) 0
         join <$> mapM (loadRecord txn (dbh ^. blockStore)) mbHash
 
+-- |Get the explicitly finalized block at a finalization index.
+getBlockAtFinalizationIndex :: (IsProtocolVersion pv, S.Serialize st)
+    => DatabaseHandlers pv st
+    -> FinalizationIndex
+    -> IO (Either String (FinalizationRecord, StoredBlock pv st))
+getBlockAtFinalizationIndex dbh finIndex = transaction (dbh ^. storeEnv) True $ \txn -> do
+    mFin <- loadRecord txn (dbh ^. finalizationRecordStore) finIndex
+    case mFin of
+      Just finRec ->
+        loadRecord txn (dbh ^. blockStore) (finalizationBlockPointer finRec) >>= \case
+          Just block -> return $ Right (finRec, block)
+          Nothing -> return $ Left $ "Could not read finalized block with hash " ++ show (finalizationBlockPointer finRec)
+      Nothing -> return $ Left $ "Could not get finalization record at index " ++ show finIndex
 
 -- |Perform a database action that may require the database to be resized,
 -- resizing the database if necessary. The size argument is only evaluated
@@ -553,6 +567,26 @@ resizeOnFull addSize a = do
     -- only handle the db full error and propagate other exceptions.
     selectDBFullError = \case (LMDB_Error _ _ (Right MDB_MAP_FULL)) -> Just ()
                               _ -> Nothing
+
+resizeOnFull' :: Int -> DatabaseHandlers pv st -> IO a -> IO a
+resizeOnFull' addSize dbh action = inner
+  where
+    inner = tryJust selectDBFullError action >>=
+      \case
+        Left _ -> do
+          envInfo <- mdb_env_info (dbh ^. storeEnv)
+          let delta = addSize + (dbStepSize - addSize `mod` dbStepSize)
+              oldMapSize = fromIntegral $ me_mapsize envInfo
+              newMapSize = oldMapSize + delta
+              _storeEnv = dbh ^. storeEnv
+          mdb_env_set_mapsize _storeEnv newMapSize
+          inner
+        Right res -> return res
+    -- only handle the db full error and propagate other exceptions.
+    selectDBFullError = \case (LMDB_Error _ _ (Right MDB_MAP_FULL)) -> Just ()
+                              _ -> Nothing
+
+
 
 -- |Write a block to the database. Adds it both to the index by height and
 -- by block hash.
@@ -611,7 +645,7 @@ rollBackToFinalizationIndex :: (IsProtocolVersion pv, S.Serialize st)
   -> FinalizationIndex
   -> IO (Either String Word)
 rollBackToFinalizationIndex dbh finIndex =
-  abortableTransaction (dbh ^. storeEnv) False $ \txn -> runExceptT $ do
+  resizeOnFull' (2^(20::Int)) dbh $  abortableTransaction (dbh ^. storeEnv) False $ \txn -> runExceptT $ do
     let 
         deleteFinalizationRecords = do
           mLastFin <- withCursor txn (dbh ^. finalizationRecordStore) $ getCursor CursorLast
@@ -632,13 +666,18 @@ rollBackToFinalizationIndex dbh finIndex =
               if blockHash == finalizationBlockPointer finRec then
                 return $ Right blockCount
               else do
+                putStrLn $ "Rolling back " ++ show blockHash
                 _ <- deleteRecord txn (dbh ^. finalizedByHeightStore) blockHeight
                 loadRecord txn (dbh ^. blockStore) (finalizationBlockPointer finRec) >>= \case
                   Just block -> do
+                    _ <- deleteRecord txn (dbh ^. blockStore) (finalizationBlockPointer finRec)
                     let transactions = blockTransactions $ sbBlock block
                     mapM_ (deleteRecord txn (dbh ^. transactionStatusStore) . getHash) transactions
                     deleteBlocksAndTransactions $! blockCount + 1
-                  Nothing -> return $ Left "Could not read finalized block"
+                  Nothing -> do 
+                    putStrLn $ "Block missing: " ++ show blockHash
+                    -- return $ Left "Could not read finalized block"
+                    deleteBlocksAndTransactions $! blockCount
             Just (Left s) -> return $ Left $ "Could not find last finalized block: " ++ s
             Nothing -> return $ Left "No last finalized block found"
     ExceptT (deleteBlocksAndTransactions 0)

@@ -831,6 +831,9 @@ instance (IsProtocolVersion pv, MonadIO m) => BS.BlockStateStorage (PureBlockSta
     {-# INLINE cacheBlockState #-}
     cacheBlockState = return
 
+    {-# INLINE fullLoadBlockState #-}
+    fullLoadBlockState _ = error "Cannot load memory-based block state"
+
     {-# INLINE serializeBlockState #-}
     serializeBlockState = return . runPut . putBlockState . _unhashedBlockState
 
