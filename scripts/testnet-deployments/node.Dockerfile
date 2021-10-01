@@ -13,10 +13,10 @@ EXPOSE 10000
 
 # TODO only install actually used packages.
 RUN apt-get update && \
-    apt-get install -y unbound ca-certificates libpq-dev liblmdb-dev && \
+    apt-get install -y ca-certificates libpq-dev && \
     rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /out/"${build_profile}"/concordium-node /concordium-node
+COPY --from=build "/out/${build_profile}/concordium-node" /concordium-node
 COPY --from=build /out/libs/* /usr/lib/x86_64-linux-gnu/
 COPY --from=build /out/start.sh /start.sh
 

@@ -4,9 +4,8 @@ extern crate gotham_derive;
 use anyhow::anyhow;
 use concordium_node::{
     common::{collector_utils::*, get_current_stamp},
-    utils::setup_logger_env,
+    utils::setup_logger,
 };
-use env_logger::Env;
 use structopt::StructOpt;
 use twox_hash::XxHash64;
 #[macro_use]
@@ -222,18 +221,7 @@ impl CollectorStateData {
 pub fn main() -> anyhow::Result<()> {
     let conf = ConfigCli::from_args();
 
-    // Prepare the logger
-    let env = if conf.trace {
-        Env::default().filter_or("LOG_LEVEL", "trace")
-    } else if conf.debug {
-        Env::default().filter_or("LOG_LEVEL", "debug")
-    } else if conf.info {
-        Env::default().filter_or("LOG_LEVEL", "info")
-    } else {
-        Env::default().filter_or("LOG_LEVEL", "warn")
-    };
-
-    setup_logger_env(env, conf.no_log_timestamp);
+    setup_logger(conf.trace, conf.debug, conf.no_log_timestamp);
 
     if conf.print_config {
         info!("{:?}", conf);
@@ -450,7 +438,9 @@ pub fn router(
 /// Calculates the average, but only from a part of the values. The omitted are
 /// taken from the highest and lowest values.
 fn average_without_outer_values(mut values: Vec<u64>, number_to_include: usize) -> u64 {
-    values.sort();
+    // the unstable sort is faster and stability makes no difference for sorting
+    // sequences of u64.
+    values.sort_unstable();
     let omitting = values.len() - number_to_include;
     let start = omitting / 2;
     let end = start + number_to_include;

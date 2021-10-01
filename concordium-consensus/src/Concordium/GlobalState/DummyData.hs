@@ -26,6 +26,7 @@ import Concordium.Types.AnonymityRevokers
 import Concordium.GlobalState.Parameters
 import Concordium.GlobalState.Rewards as Rewards
 import Concordium.Types.Updates
+import Concordium.Types.Accounts
 
 import qualified Concordium.Types.SeedState as SeedState
 import Concordium.GlobalState.Basic.BlockState.AccountTable(toList)
@@ -38,6 +39,7 @@ import qualified Data.ByteString as BS
 import Concordium.Crypto.DummyData
 import Concordium.ID.DummyData
 import Concordium.Types.DummyData
+import qualified Concordium.Genesis.Data as GenesisData
 import qualified Concordium.Genesis.Data.P1 as P1
 
 cryptoParamsFileContents :: BS.ByteString
@@ -177,8 +179,8 @@ makeTestingGenesisDataP1
   genesisUpdateKeys
   genesisChainParameters
     = GDP1 P1.GDP1Initial {
-        genesisCore=P1.CoreGenesisParameters{..},
-        genesisInitialState=P1.GenesisState{..}
+        genesisCore=GenesisData.CoreGenesisParameters{..},
+        genesisInitialState=GenesisData.GenesisState{..}
       }
     where
         -- todo hardcoded epoch length (and initial seed)

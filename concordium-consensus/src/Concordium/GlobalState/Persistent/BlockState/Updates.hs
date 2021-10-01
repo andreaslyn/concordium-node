@@ -20,7 +20,7 @@ import Concordium.Utils.Serialization.Put
 
 import Concordium.GlobalState.Parameters
 import Concordium.GlobalState.Persistent.BlobStore
-import qualified Concordium.GlobalState.Basic.BlockState.Updates as Basic
+import qualified Concordium.Types.UpdateQueues as UQ
 import qualified Concordium.Types.IdentityProviders as IPS
 import qualified Concordium.Types.AnonymityRevokers as ARS
 
@@ -97,28 +97,28 @@ emptyUpdateQueue = UpdateQueue {
     }
 
 -- |Make a persistent update queue from a memory-only queue.
-makePersistentUpdateQueue :: (MonadIO m, MHashableTo m H.Hash (StoreSerialized e)) => Basic.UpdateQueue e -> m (UpdateQueue e)
-makePersistentUpdateQueue Basic.UpdateQueue{..} = do
+makePersistentUpdateQueue :: (MonadIO m, MHashableTo m H.Hash (StoreSerialized e)) => UQ.UpdateQueue e -> m (UpdateQueue e)
+makePersistentUpdateQueue UQ.UpdateQueue{..} = do
     let uqNextSequenceNumber = _uqNextSequenceNumber
     uqQueue <- Seq.fromList <$> forM _uqQueue (\(t, e) -> (t,) <$> makeHashedBufferedRef (StoreSerialized e))
     return UpdateQueue{..}
 
 -- |Convert a persistent update queue to an in-memory one.
-makeBasicUpdateQueue :: (MonadBlobStore m, MHashableTo m H.Hash (StoreSerialized e), Serialize e) => UpdateQueue e -> m (Basic.UpdateQueue e)
+makeBasicUpdateQueue :: (MonadBlobStore m, MHashableTo m H.Hash (StoreSerialized e), Serialize e) => UpdateQueue e -> m (UQ.UpdateQueue e)
 makeBasicUpdateQueue UpdateQueue{..} = do
     let _uqNextSequenceNumber = uqNextSequenceNumber
     _uqQueue <- toList <$> forM uqQueue (\(t, e) -> (t,) . unStoreSerialized <$> refLoad e)
-    return Basic.UpdateQueue{..}
+    return UQ.UpdateQueue{..}
 
 -- |Convert a persistent update queue to an in-memory one.
-makeBasicUpdateQueueHashed :: (MonadBlobStore m, MHashableTo m H.Hash (StoreSerialized e), Serialize e) => UpdateQueue e -> m (Basic.UpdateQueue (Hashed e))
+makeBasicUpdateQueueHashed :: (MonadBlobStore m, MHashableTo m H.Hash (StoreSerialized e), Serialize e) => UpdateQueue e -> m (UQ.UpdateQueue (Hashed e))
 makeBasicUpdateQueueHashed UpdateQueue{..} = do
     let _uqNextSequenceNumber = uqNextSequenceNumber
     _uqQueue <- toList <$> forM uqQueue (\(t, e) -> do
             v <- unStoreSerialized <$> refLoad e
             h <- getHashM e
             return (t, Hashed v h))
-    return Basic.UpdateQueue{..}
+    return UQ.UpdateQueue{..}
 
 -- |Add an update event to an update queue, incrementing the sequence number.
 -- Any updates in the queue with later or equal effective times are removed
@@ -134,6 +134,16 @@ enqueue !t !e q = do
         refMake $ UpdateQueue {
                 uqNextSequenceNumber = uqNextSequenceNumber + 1,
                 uqQueue = surviving Seq.|> (t, eref)
+            }
+
+-- |Clear all pending updates from a queue.
+clearQueue :: (MonadIO m, Reference m ref (UpdateQueue e))
+    => ref (UpdateQueue e) -> m (ref (UpdateQueue e))
+clearQueue q = do
+        UpdateQueue{..} <- refLoad q
+        refMake $ UpdateQueue {
+                uqNextSequenceNumber = uqNextSequenceNumber,
+                uqQueue = Seq.empty
             }
 
 -- |Update queues for all on-chain update types.
@@ -319,8 +329,8 @@ emptyPendingUpdates = PendingUpdates <$> e <*> e <*> e <*> e <*> e <*> e <*> e <
         e = makeHashedBufferedRef emptyUpdateQueue
 
 -- |Construct a persistent 'PendingUpdates' from an in-memory one.
-makePersistentPendingUpdates :: (MonadBlobStore m) => Basic.PendingUpdates -> m PendingUpdates
-makePersistentPendingUpdates Basic.PendingUpdates{..} = do
+makePersistentPendingUpdates :: (MonadBlobStore m) => UQ.PendingUpdates -> m PendingUpdates
+makePersistentPendingUpdates UQ.PendingUpdates{..} = do
         pRootKeysUpdateQueue <- refMake =<< makePersistentUpdateQueue _pRootKeysUpdateQueue
         pLevel1KeysUpdateQueue <- refMake =<< makePersistentUpdateQueue _pLevel1KeysUpdateQueue
         pLevel2KeysUpdateQueue <- refMake =<< makePersistentUpdateQueue _pLevel2KeysUpdateQueue
@@ -337,8 +347,8 @@ makePersistentPendingUpdates Basic.PendingUpdates{..} = do
         pAddIdentityProviderQueue <- refMake =<< makePersistentUpdateQueue _pAddIdentityProviderQueue
         return PendingUpdates{..}
 
--- |Convert a persistent 'PendingUpdates' to an in-memory 'Basic.PendingUpdates'.
-makeBasicPendingUpdates :: (MonadBlobStore m) => PendingUpdates -> m Basic.PendingUpdates
+-- |Convert a persistent 'PendingUpdates' to an in-memory 'UQ.PendingUpdates'.
+makeBasicPendingUpdates :: (MonadBlobStore m) => PendingUpdates -> m UQ.PendingUpdates
 makeBasicPendingUpdates PendingUpdates{..} = do
         _pRootKeysUpdateQueue <- makeBasicUpdateQueue =<< refLoad pRootKeysUpdateQueue
         _pLevel1KeysUpdateQueue <- makeBasicUpdateQueue =<< refLoad pLevel1KeysUpdateQueue
@@ -354,7 +364,7 @@ makeBasicPendingUpdates PendingUpdates{..} = do
         _pBakerStakeThresholdQueue <- makeBasicUpdateQueue =<< refLoad pBakerStakeThresholdQueue
         _pAddAnonymityRevokerQueue <- makeBasicUpdateQueue =<< refLoad pAddAnonymityRevokerQueue
         _pAddIdentityProviderQueue <- makeBasicUpdateQueue =<< refLoad pAddIdentityProviderQueue
-        return Basic.PendingUpdates{..}
+        return UQ.PendingUpdates{..}
 
 -- |Current state of updatable parameters and update queues.
 data Updates = Updates {
@@ -427,8 +437,8 @@ initialUpdates initialKeyCollection chainParams = do
         return Updates{..}
 
 -- |Make a persistent 'Updates' from an in-memory one.
-makePersistentUpdates :: (MonadBlobStore m) => Basic.Updates -> m Updates
-makePersistentUpdates Basic.Updates{..} = do
+makePersistentUpdates :: (MonadBlobStore m) => UQ.Updates -> m Updates
+makePersistentUpdates UQ.Updates{..} = do
         currentKeyCollection <- refMake (StoreSerialized (_unhashed _currentKeyCollection))
         currentProtocolUpdate <- case _currentProtocolUpdate of
             Nothing -> return Null
@@ -437,8 +447,8 @@ makePersistentUpdates Basic.Updates{..} = do
         pendingUpdates <- makePersistentPendingUpdates _pendingUpdates
         return Updates{..}
 
--- |Convert a persistent 'Updates' to an in-memory 'Basic.Updates'.
-makeBasicUpdates :: (MonadBlobStore m) => Updates -> m Basic.Updates
+-- |Convert a persistent 'Updates' to an in-memory 'UQ.Updates'.
+makeBasicUpdates :: (MonadBlobStore m) => Updates -> m UQ.Updates
 makeBasicUpdates Updates{..} = do
         hKC <- getHashM currentKeyCollection
         kc <- unStoreSerialized <$> refLoad currentKeyCollection
@@ -448,7 +458,7 @@ makeBasicUpdates Updates{..} = do
             Some pu -> Just . unStoreSerialized <$> refLoad pu
         _currentParameters <- unStoreSerialized <$> refLoad currentParameters
         _pendingUpdates <- makeBasicPendingUpdates pendingUpdates
-        return Basic.Updates{..}
+        return UQ.Updates{..}
 
 -- |Process the update queue to determine the new value of a parameter (or the authorizations).
 -- This splits the queue at the given timestamp. The last value up to and including the timestamp
@@ -779,14 +789,14 @@ futureElectionDifficulty uref ts = do
 
 -- |Get the protocol update status: either an effective protocol update or
 -- a list of pending future protocol updates.
-protocolUpdateStatus :: (MonadBlobStore m) => BufferedRef Updates -> m (Either ProtocolUpdate [(TransactionTime, ProtocolUpdate)])
+protocolUpdateStatus :: (MonadBlobStore m) => BufferedRef Updates -> m UQ.ProtocolUpdateStatus
 protocolUpdateStatus uref = do
         Updates{..} <- refLoad uref
         case currentProtocolUpdate of
             Null -> do
                 pq <- refLoad (pProtocolQueue pendingUpdates)
-                Right . toList <$> forM (uqQueue pq) (\(t, e) -> (t,) . unStoreSerialized <$> refLoad e)
-            Some puRef -> Left . unStoreSerialized <$> refLoad puRef
+                UQ.PendingProtocolUpdates . toList <$> forM (uqQueue pq) (\(t, e) -> (t,) . unStoreSerialized <$> refLoad e)
+            Some puRef -> UQ.ProtocolUpdated . unStoreSerialized <$> refLoad puRef
 
 -- |Determine the next sequence number for a given update type.
 lookupNextUpdateSequenceNumber :: (MonadBlobStore m) => BufferedRef Updates -> UpdateType -> m UpdateSequenceNumber
@@ -828,6 +838,24 @@ enqueueUpdate effectiveTime payload uref = do
             UVLevel1Keys v -> enqueue effectiveTime v pLevel1KeysUpdateQueue <&> \newQ -> p {pLevel1KeysUpdateQueue=newQ}
             UVLevel2Keys v -> enqueue effectiveTime v pLevel2KeysUpdateQueue <&> \newQ -> p {pLevel2KeysUpdateQueue=newQ}
         refMake u{pendingUpdates = newPendingUpdates}
+
+-- |Overwrite the election difficulty with the specified value and remove
+-- any pending updates to the election difficulty from the queue.
+overwriteElectionDifficulty :: (MonadBlobStore m) => ElectionDifficulty -> BufferedRef Updates -> m (BufferedRef Updates)
+overwriteElectionDifficulty newDifficulty uref = do
+    u@Updates{pendingUpdates = p@PendingUpdates{..}, ..} <- refLoad uref
+    StoreSerialized cp <- refLoad currentParameters
+    newCurrentParameters <- refMake $ StoreSerialized (cp & cpElectionDifficulty .~ newDifficulty)
+    newPendingUpdates <- clearQueue pElectionDifficultyQueue <&> \newQ -> p{pElectionDifficultyQueue=newQ}
+    refMake u{currentParameters = newCurrentParameters, pendingUpdates = newPendingUpdates}
+
+-- |Clear the protocol update and remove any pending protocol updates from
+-- the queue.
+clearProtocolUpdate :: (MonadBlobStore m) => BufferedRef Updates -> m (BufferedRef Updates)
+clearProtocolUpdate uref = do
+    u@Updates{pendingUpdates = p@PendingUpdates{..}} <- refLoad uref
+    newPendingUpdates <- clearQueue pProtocolQueue <&> \newQ -> p{pProtocolQueue=newQ}
+    refMake u{currentProtocolUpdate = Null, pendingUpdates = newPendingUpdates}
 
 -- |Get the current EnergyRate.
 lookupEnergyRate :: (MonadBlobStore m) => BufferedRef Updates -> m EnergyRate

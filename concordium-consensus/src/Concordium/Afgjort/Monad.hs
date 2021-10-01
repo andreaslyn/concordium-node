@@ -2,9 +2,10 @@ module Concordium.Afgjort.Monad where
 
 import qualified Data.Sequence as Seq
 
+import Concordium.Types (FinalizationIndex)
+
 import Concordium.GlobalState.Finalization
 import Concordium.GlobalState.Types
-
 import Concordium.Afgjort.Finalize.Types
 import Concordium.Skov.Monad (UpdateResult)
 
@@ -74,3 +75,5 @@ class (Monad m) => FinalizationMonad m where
     -- |Return the finalization records for the unsettled finalized blocks with
     -- finalization index greater than the specified value.
     finalizationUnsettledRecords :: FinalizationIndex -> m (Seq.Seq FinalizationRecord)
+    -- |Return @True@ if we are a member of the current finalization committee.
+    isFinalizationCommitteeMember :: m Bool

@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
 module GlobalStateTests.Updates where
 
@@ -53,7 +54,7 @@ import Concordium.ID.Parameters
 import Concordium.ID.DummyData
 import Concordium.Common.Time
 import qualified Concordium.GlobalState.Persistent.BlockState.Updates as PU
-import qualified Concordium.GlobalState.Basic.BlockState.Updates as BU
+import qualified Concordium.Types.UpdateQueues as UQ
 
 --------------------------------------------------------------------------------
 --                                                                            --
@@ -102,14 +103,15 @@ createGS dbDir = do
                                      maxBound
                                      dummyKeyCollection
                                      dummyChainParameters
-    rp = defaultRuntimeParameters { rpTreeStateDir = dbDir, rpBlockStateFile = dbDir </> "blockstate" }
-    config = PairGSConfig (MTMBConfig rp genesis, DTDBConfig rp genesis)
+    rp = defaultRuntimeParameters
+    config = PairGSConfig (MTMBConfig rp genesis, DTDBConfig rp dbDir (dbDir </> "blockstate" <.> "dat") genesis)
   (x, y, (NoLogContext, NoLogContext)) <- runSilentLogger $ initialiseGlobalState config
   return (Identity x, Identity y)
 
 destroyGS :: (Identity PairedGSContext, Identity PairedGState) -> IO ()
 destroyGS (Identity c, Identity s) =
-  shutdownGlobalState (Proxy :: Proxy (PairGSConfig (MemoryTreeMemoryBlockConfig PV) (DiskTreeDiskBlockConfig PV)))
+  shutdownGlobalState (protocolVersion @PV)
+                      (Proxy :: Proxy (PairGSConfig MemoryTreeMemoryBlockConfig DiskTreeDiskBlockConfig))
                       c
                       s
                       (NoLogContext, NoLogContext)
@@ -202,7 +204,7 @@ increaseLimit newLimit (bs, bs2) = do
                         -- requirements.
                         runReaderT (PBS.runPersistentBlockStateMonad f) rc
                         return ((), ps, ())))
-  return (bs & blockUpdates . BU.currentParameters . cpBakerStakeThreshold .~ newLimit, bs2)
+  return (bs & blockUpdates . UQ.currentParameters . cpBakerStakeThreshold .~ newLimit, bs2)
 
 --------------------------------------------------------------------------------
 --                                                                            --

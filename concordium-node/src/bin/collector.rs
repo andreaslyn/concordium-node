@@ -1,10 +1,11 @@
 #![recursion_limit = "1024"]
+#[cfg(target_os = "macos")]
+use concordium_node::utils::setup_macos_logger;
 use concordium_node::{
     common::{collector_utils::NodeInfo, grpc_api},
     req_with_auth,
-    utils::setup_logger_env,
+    utils::setup_logger,
 };
-use env_logger::Env;
 use serde_json::Value;
 use std::{
     borrow::ToOwned,
@@ -120,24 +121,30 @@ struct ConfigCli {
         env = "CONCORDIUM_NODE_COLLECTOR_MAX_GRPC_FAILURES_ALLOWED"
     )]
     pub max_grpc_failures_allowed: u64,
+    #[cfg(target_os = "macos")]
+    #[structopt(
+        long = "use-mac-log",
+        help = "Enable native logging on macOS by providing a subsystem name, e.g. \
+                'software.concordium.mainnet.node'. This disables the normal logging system and \
+                is incompatible with '--log-config'. Log messages can be found via Console.app or \
+                the log commandline tool by searching for the subsystem.",
+        env = "CONCORDIUM_NODE_COLLECTOR_USE_MAC_LOG",
+        conflicts_with = "log-config"
+    )]
+    pub use_mac_log: Option<String>,
 }
 
 #[tokio::main]
 async fn main() {
     let conf = ConfigCli::from_args();
 
-    // Prepare the logger
-    let env = if conf.trace {
-        Env::default().filter_or("LOG_LEVEL", "trace")
-    } else if conf.debug {
-        Env::default().filter_or("LOG_LEVEL", "debug")
-    } else if conf.info {
-        Env::default().filter_or("LOG_LEVEL", "info")
-    } else {
-        Env::default().filter_or("LOG_LEVEL", "warn")
+    #[cfg(target_os = "macos")]
+    match conf.use_mac_log {
+        Some(ref subsystem) => setup_macos_logger(conf.trace, conf.debug, subsystem),
+        None => setup_logger(conf.trace, conf.debug, conf.no_log_timestamp),
     };
-
-    setup_logger_env(env, conf.no_log_timestamp);
+    #[cfg(not(target_os = "macos"))]
+    setup_logger(conf.trace, conf.debug, conf.no_log_timestamp);
 
     if conf.print_config {
         info!("{:?}", conf);
@@ -257,11 +264,7 @@ async fn collect_data<'a>(
     let version = node_version_reply.get_ref().value.to_owned();
     let packets_sent = node_total_sent_reply.get_ref().value;
     let packets_received = node_total_received_reply.get_ref().value;
-    let baker_id = if let Some(baker_id) = node_info_reply.consensus_baker_id {
-        Some(baker_id)
-    } else {
-        None
-    };
+    let baker_id = node_info_reply.consensus_baker_id;
     let node_peer_stats_reply = node_peer_stats_reply.get_ref();
     let peer_stats = &node_peer_stats_reply.peerstats;
     let peers_summed_latency = peer_stats.iter().map(|element| element.latency).sum::<u64>() as f64;
@@ -330,16 +333,12 @@ async fn collect_data<'a>(
         let json_consensus_ancestors_value: Value =
             serde_json::from_str(&node_ancestors_reply.get_ref().value)?;
         if json_consensus_ancestors_value.is_array() {
-            if let Some(ancestors_arr) = json_consensus_ancestors_value.as_array() {
-                Some(
-                    ancestors_arr
-                        .iter()
-                        .map(|value| value.as_str().unwrap().to_owned())
-                        .collect::<Vec<String>>(),
-                )
-            } else {
-                None
-            }
+            json_consensus_ancestors_value.as_array().map(|ancestors_arr| {
+                ancestors_arr
+                    .iter()
+                    .map(|value| value.as_str().unwrap().to_owned())
+                    .collect::<Vec<String>>()
+            })
         } else {
             None
         }

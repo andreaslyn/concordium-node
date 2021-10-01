@@ -19,19 +19,12 @@ use concordium_node::{
     stats_export_service::instantiate_stats_export_engine,
     utils,
 };
-use crypto_common::serialize::Serial;
-use std::{
-    fs::File,
-    io::prelude::*,
-    sync::{Arc, RwLock},
-    thread,
-    time::Duration,
-};
+use crypto_common::Serial;
+use std::{fs::File, io::prelude::*, net::ToSocketAddrs, sync::Arc, thread, time::Duration};
 
 fn main() -> anyhow::Result<()> {
     let (mut conf, _app_prefs) = utils::get_config_and_logging_setup()?;
 
-    conf.connection.require_dnssec = false;
     conf.connection.no_bootstrap_dns = true;
     conf.connection.desired_nodes = conf.connection.connect_to.len() as u16;
 
@@ -42,18 +35,14 @@ fn main() -> anyhow::Result<()> {
         &conf,
         PeerType::Node,
         stats_export_service,
-        Arc::new(RwLock::new(vec![])),
+        Arc::new(Default::default()),
     )
     .context("Failed to create the node")?;
 
     spawn(&node, poll, None);
 
-    conf.connection.connect_to.iter().for_each(|host: &String| {
-        match utils::parse_host_port(
-            &host,
-            &node.config.dns_resolvers,
-            conf.connection.require_dnssec,
-        ) {
+    conf.connection.connect_to.iter().for_each(
+        |host: &String| match ToSocketAddrs::to_socket_addrs(&host) {
             Ok(addrs) => {
                 for addr in addrs {
                     let _ = connect(&node, PeerType::Node, addr, None, false)
@@ -61,8 +50,8 @@ fn main() -> anyhow::Result<()> {
                 }
             }
             Err(err) => error!("Can't parse configured addresses to connect to: {}", err),
-        }
-    });
+        },
+    );
 
     info!("Sleeping to let network connections settle");
     thread::sleep(Duration::from_millis(10000));
@@ -77,11 +66,10 @@ fn main() -> anyhow::Result<()> {
                     if read_bytes != block_len_buffer.len() {
                         if read_bytes == 0 {
                             info!("No more blocks to be read from file");
-                            break;
                         } else {
                             error!("No enough bytes to read");
-                            break;
                         }
+                        break;
                     }
                     let block_size = u64::from_be_bytes(block_len_buffer);
                     info!(

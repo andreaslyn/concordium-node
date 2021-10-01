@@ -18,6 +18,7 @@ import Data.Aeson(FromJSON, parseJSON, withObject, (.:))
 import Data.List (foldl')
 
 import Concordium.Types
+import Concordium.Types.Accounts
 
 import qualified Concordium.Crypto.BlockSignature as Sig
 import qualified Concordium.Crypto.VRF as VRF
@@ -316,7 +317,7 @@ class (SkovMonad pv m, FinalizationMonad m) => BakerMonad pv m where
     -- the current slot by more than the 'rpMaxBakingDelay' runtime parameter.
     tryBake :: BakerIdentity -> Slot -> m BakeResult
 
-instance (FinalizationMonad (SkovT h c m), MonadIO m, SkovMonad pv (SkovT h c m), TreeStateMonad pv (SkovT h c m), OnSkov (SkovT h c m)) =>
-        BakerMonad pv (SkovT h c m) where
+instance (FinalizationMonad (SkovT pv h c m), MonadIO m, SkovMonad pv (SkovT pv h c m), TreeStateMonad pv (SkovT pv h c m), OnSkov (SkovT pv h c m)) =>
+        BakerMonad pv (SkovT pv h c m) where
     bakeForSlot = doBakeForSlot
     tryBake = doTryBake

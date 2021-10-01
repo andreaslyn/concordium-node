@@ -49,7 +49,7 @@ import qualified Concordium.GlobalState.Persistent.Trie as Trie
 import Concordium.GlobalState.BlockState
 import Concordium.GlobalState.Parameters
 import Concordium.GlobalState.Types
-import Concordium.GlobalState.Account hiding (addIncomingEncryptedAmount, addToSelfEncryptedAmount, _stakedAmount, _stakeEarnings, _accountBakerInfo, _bakerPendingChange, stakedAmount, stakeEarnings, accountBakerInfo, bakerPendingChange)
+import Concordium.GlobalState.Account hiding (addIncomingEncryptedAmount, addToSelfEncryptedAmount)
 import qualified Concordium.Types.IdentityProviders as IPS
 import qualified Concordium.Types.AnonymityRevokers as ARS
 import qualified Concordium.GlobalState.Rewards as Rewards
@@ -59,13 +59,15 @@ import qualified Concordium.GlobalState.Persistent.Instances as Instances
 import qualified Concordium.Types.Transactions as Transactions
 import qualified Concordium.Types.Execution as Transactions
 import Concordium.GlobalState.Persistent.Instances(PersistentInstance(..), PersistentInstanceParameters(..))
-import Concordium.GlobalState.Instance (Instance(..),InstanceParameters(..),makeInstanceHash')
+import Concordium.Types.Instance (Instance(..),InstanceParameters(..),makeInstanceHash')
 import Concordium.GlobalState.Persistent.Account
 import Concordium.GlobalState.Persistent.BlockState.Updates
 import qualified Concordium.GlobalState.Basic.BlockState.Account as TransientAccount
 import qualified Concordium.GlobalState.Basic.BlockState as Basic
-import qualified Concordium.GlobalState.Basic.BlockState.Updates as Basic
+import qualified Concordium.Types.UpdateQueues as UQ
 import qualified Concordium.GlobalState.Persistent.BlockState.Modules as Modules
+import qualified Concordium.Types.Accounts as BaseAccounts
+import Concordium.Types.Accounts (BakerPendingChange(NoChange), BakerInfo(_bakerAggregationVerifyKey), BakerPendingChange(..))
 import Concordium.Types.SeedState
 import Concordium.Logger (MonadLogger)
 import Concordium.Types.HashableTo
@@ -219,7 +221,7 @@ emptyHashedEpochBlocks = HashedEpochBlocks {
         hebHash = Rewards.emptyEpochBlocksHash
     }
 
--- |Add a new 'BakerId' to the start of a 'HashedEpcohBlocks'.
+-- |Add a new 'BakerId' to the start of a 'HashedEpochBlocks'.
 consEpochBlock :: (MonadBlobStore m) => BakerId -> HashedEpochBlocks -> m HashedEpochBlocks
 consEpochBlock b hebbs = do
         mbr <- refMake EpochBlock{
@@ -259,7 +261,7 @@ putHashedEpochBlocksV0 HashedEpochBlocks{..} = do
 type PersistentBlockState (pv :: ProtocolVersion) = IORef (BufferedRef (BlockStatePointers pv))
 
 
--- |References to the componenets that make up the block state.
+-- |References to the components that make up the block state.
 --
 -- This type is parametric in the protocol version (as opposed to defined
 -- as a data family) on the principle that the structure will be mostly
@@ -1082,10 +1084,10 @@ doGetCurrentElectionDifficulty pbs = do
         upds <- refLoad (bspUpdates bsp)
         _cpElectionDifficulty . unStoreSerialized <$> refLoad (currentParameters upds)
 
-doGetUpdates :: (IsProtocolVersion pv, MonadBlobStore m) => PersistentBlockState pv -> m Basic.Updates
+doGetUpdates :: (IsProtocolVersion pv, MonadBlobStore m) => PersistentBlockState pv -> m UQ.Updates
 doGetUpdates = makeBasicUpdates <=< refLoad . bspUpdates <=< loadPBS
 
-doGetProtocolUpdateStatus :: (IsProtocolVersion pv, MonadBlobStore m) => PersistentBlockState pv -> m (Either ProtocolUpdate [(TransactionTime, ProtocolUpdate)])
+doGetProtocolUpdateStatus :: (IsProtocolVersion pv, MonadBlobStore m) => PersistentBlockState pv -> m UQ.ProtocolUpdateStatus
 doGetProtocolUpdateStatus = protocolUpdateStatus . bspUpdates <=< loadPBS
 
 doProcessUpdateQueues :: (IsProtocolVersion pv, MonadBlobStore m) => PersistentBlockState pv -> Timestamp -> m (Map.Map TransactionTime UpdateValue, PersistentBlockState pv)
@@ -1128,6 +1130,18 @@ doEnqueueUpdate :: (IsProtocolVersion pv, MonadBlobStore m) => PersistentBlockSt
 doEnqueueUpdate pbs effectiveTime payload = do
         bsp <- loadPBS pbs
         u' <- enqueueUpdate effectiveTime payload (bspUpdates bsp)
+        storePBS pbs bsp{bspUpdates = u'}
+
+doOverwriteElectionDifficulty :: (IsProtocolVersion pv, MonadBlobStore m) => PersistentBlockState pv -> ElectionDifficulty -> m (PersistentBlockState pv)
+doOverwriteElectionDifficulty pbs newElectionDifficulty = do
+        bsp <- loadPBS pbs
+        u' <- overwriteElectionDifficulty newElectionDifficulty (bspUpdates bsp)
+        storePBS pbs bsp{bspUpdates = u'}
+
+doClearProtocolUpdate :: (IsProtocolVersion pv, MonadBlobStore m) => PersistentBlockState pv -> m (PersistentBlockState pv)
+doClearProtocolUpdate pbs = do
+        bsp <- loadPBS pbs
+        u' <- clearProtocolUpdate (bspUpdates bsp)
         storePBS pbs bsp{bspUpdates = u'}
 
 doAddReleaseSchedule :: (IsProtocolVersion pv, MonadBlobStore m) => PersistentBlockState pv -> [(AccountAddress, Timestamp)] -> m (PersistentBlockState pv)
@@ -1265,7 +1279,7 @@ instance (PersistentState r m, IsProtocolVersion pv) => AccountOperations (Persi
         Some bref -> do
             PersistentAccountBaker{..} <- refLoad bref
             abi <- refLoad _accountBakerInfo
-            return $ Just AccountBaker{_accountBakerInfo = abi, ..}
+            return $ Just BaseAccounts.AccountBaker{_accountBakerInfo = abi, ..}
 
 instance (IsProtocolVersion pv, PersistentState r m) => BlockStateOperations (PersistentBlockStateMonad pv r m) where
     bsoGetModule pbs mref = doGetModule pbs mref
@@ -1303,6 +1317,8 @@ instance (IsProtocolVersion pv, PersistentState r m) => BlockStateOperations (Pe
     bsoGetUpdateKeyCollection = doGetUpdateKeyCollection
     bsoGetNextUpdateSequenceNumber = doGetNextUpdateSequenceNumber
     bsoEnqueueUpdate = doEnqueueUpdate
+    bsoOverwriteElectionDifficulty = doOverwriteElectionDifficulty
+    bsoClearProtocolUpdate = doClearProtocolUpdate
     bsoAddReleaseSchedule = doAddReleaseSchedule
     bsoGetEnergyRate = doGetEnergyRate
     bsoGetChainParameters = doGetChainParameters
@@ -1347,7 +1363,7 @@ instance (IsProtocolVersion pv, PersistentState r m) => BlockStateStorage (Persi
 
     serializeBlockState hpbs = do
         p <- runPutT (putBlockStateV0 (hpbsPointers hpbs))
-        return $ runPutLazy p
+        return $ runPut p
 
     writeBlockState h hpbs =
         runPutH (putBlockStateV0 (hpbsPointers hpbs)) h

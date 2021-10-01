@@ -44,7 +44,7 @@ import Data.Serialize(Serialize)
 import qualified Data.Map as Map
 import qualified Data.Sequence as Seq
 import Data.Foldable (foldl')
-import qualified Data.ByteString.Lazy as LBS
+import qualified Data.ByteString as BS
 import Data.Word
 import System.IO (Handle)
 
@@ -58,10 +58,11 @@ import Concordium.GlobalState.Account
 
 import Concordium.GlobalState.Basic.BlockState.AccountReleaseSchedule
 import Concordium.GlobalState.BakerInfo
-import qualified Concordium.GlobalState.Basic.BlockState.Updates as Basic
+import qualified Concordium.Types.UpdateQueues as UQ
+import Concordium.Types.Accounts
 import Concordium.GlobalState.Parameters
 import Concordium.GlobalState.Rewards
-import Concordium.GlobalState.Instance
+import Concordium.Types.Instance
 import Concordium.GlobalState.Types
 import Concordium.Types.IdentityProviders
 import Concordium.Types.AnonymityRevokers
@@ -250,12 +251,12 @@ class AccountOperations m => BlockStateQuery m where
     -- |Get the value of the election difficulty that was used to bake this block.
     getCurrentElectionDifficulty :: BlockState m -> m ElectionDifficulty
     -- |Get the current chain parameters and pending updates.
-    getUpdates :: BlockState m -> m Basic.Updates
+    getUpdates :: BlockState m -> m UQ.Updates
     -- |Get the protocol update status. If a protocol update has taken effect,
     -- returns @Left protocolUpdate@. Otherwise, returns @Right pendingProtocolUpdates@.
     -- The @pendingProtocolUpdates@ is a (possibly-empty) list of timestamps and protocol
     -- updates that have not yet taken effect.
-    getProtocolUpdateStatus :: BlockState m -> m (Either ProtocolUpdate [(TransactionTime, ProtocolUpdate)])
+    getProtocolUpdateStatus :: BlockState m -> m UQ.ProtocolUpdateStatus
 
     -- |Get the current cryptographic parameters of the chain.
     getCryptographicParameters :: BlockState m -> m CryptographicParameters
@@ -525,6 +526,17 @@ class (BlockStateQuery m) => BlockStateOperations m where
   -- |Enqueue an update to take effect at the specified time.
   bsoEnqueueUpdate :: UpdatableBlockState m -> TransactionTime -> UpdateValue -> m (UpdatableBlockState m)
 
+  -- |Overwrite the election difficulty, removing any queued election difficulty updates.
+  -- This is intended to be used for protocol updates that affect the election difficulty in
+  -- tandem with the slot duration.
+  -- Note that this does not affect the next sequence number for election difficulty updates.
+  bsoOverwriteElectionDifficulty :: UpdatableBlockState m -> ElectionDifficulty -> m (UpdatableBlockState m)
+
+  -- |Clear the protocol update and any queued protocol updates.
+  -- This is intended to be used to reset things after a protocol update has taken effect.
+  -- This does not affect the next sequence number for protocol updates.
+  bsoClearProtocolUpdate :: UpdatableBlockState m -> m (UpdatableBlockState m)
+
   -- |Add the given accounts and timestamps to the per-block account release schedule.
   -- PRECONDITION: The given timestamp must be the first timestamp for a release for the given account.
   bsoAddReleaseSchedule :: UpdatableBlockState m -> [(AccountAddress, Timestamp)] -> m (UpdatableBlockState m)
@@ -593,7 +605,7 @@ class (BlockStateOperations m, Serialize (BlockStateRef m)) => BlockStateStorage
 
     -- |Serialize the block state to a byte string.
     -- This serialization does not include transaction outcomes.
-    serializeBlockState :: BlockState m -> m LBS.ByteString
+    serializeBlockState :: BlockState m -> m BS.ByteString
 
     -- |Serialize the block state to a file handle.
     -- This serialization does not include transaction outcomes.
@@ -710,6 +722,8 @@ instance (Monad (t m), MonadTrans t, BlockStateOperations m) => BlockStateOperat
   bsoGetUpdateKeyCollection = lift . bsoGetUpdateKeyCollection
   bsoGetNextUpdateSequenceNumber s = lift . bsoGetNextUpdateSequenceNumber s
   bsoEnqueueUpdate s tt payload = lift $ bsoEnqueueUpdate s tt payload
+  bsoOverwriteElectionDifficulty s = lift . bsoOverwriteElectionDifficulty s
+  bsoClearProtocolUpdate = lift . bsoClearProtocolUpdate
   bsoAddReleaseSchedule s l = lift $ bsoAddReleaseSchedule s l
   bsoGetEnergyRate = lift . bsoGetEnergyRate
   bsoGetChainParameters = lift . bsoGetChainParameters
@@ -753,6 +767,8 @@ instance (Monad (t m), MonadTrans t, BlockStateOperations m) => BlockStateOperat
   {-# INLINE bsoGetUpdateKeyCollection #-}
   {-# INLINE bsoGetNextUpdateSequenceNumber #-}
   {-# INLINE bsoEnqueueUpdate #-}
+  {-# INLINE bsoOverwriteElectionDifficulty #-}
+  {-# INLINE bsoClearProtocolUpdate #-}
   {-# INLINE bsoAddReleaseSchedule #-}
   {-# INLINE bsoGetEnergyRate #-}
   {-# INLINE bsoGetChainParameters #-}

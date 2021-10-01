@@ -101,8 +101,8 @@ impl TryFrom<String> for HashBytes {
     fn try_from(value: String) -> Result<Self, Self::Error> { Self::from_str(value.as_str()) }
 }
 
-impl Into<String> for HashBytes {
-    fn into(self) -> String { self.to_string() }
+impl From<HashBytes> for String {
+    fn from(x: HashBytes) -> Self { x.to_string() }
 }
 
 // a short, 8-character beginning of the SHA
@@ -203,67 +203,64 @@ pub enum ConsensusFfiResponse {
     DuplicateNonce,
     NonceTooLarge,
     TooLowEnergy,
+    InvalidGenesisIndex,
 }
 
 impl ConsensusFfiResponse {
     pub fn is_successful(self) -> bool {
         use ConsensusFfiResponse::*;
 
-        match self {
-            Success | PendingBlock | PendingFinalization | Asynchronous => true,
-            _ => false,
-        }
+        matches!(self, Success | PendingBlock | PendingFinalization | Asynchronous)
     }
 
     pub fn is_pending(self) -> bool {
         use ConsensusFfiResponse::*;
 
-        match self {
-            PendingBlock | PendingFinalization => true,
-            _ => false,
-        }
+        matches!(self, PendingBlock | PendingFinalization | InvalidGenesisIndex)
     }
 
     pub fn is_acceptable(self) -> bool {
         use ConsensusFfiResponse::*;
 
-        match self {
+        !matches!(
+            self,
             BakerNotFound
-            | DeserializationError
-            | InvalidResult
-            | Unverifiable
-            | BlockTooEarly
-            | ExpiryTooLate
-            | VerificationFailed
-            | NonexistingSenderAccount
-            | DuplicateNonce
-            | NonceTooLarge
-            | TooLowEnergy
-            | ConsensusShutDown => false,
-            _ => true,
-        }
+                | DeserializationError
+                | InvalidResult
+                | Unverifiable
+                | BlockTooEarly
+                | ExpiryTooLate
+                | VerificationFailed
+                | NonexistingSenderAccount
+                | DuplicateNonce
+                | NonceTooLarge
+                | TooLowEnergy
+                | ConsensusShutDown
+                | InvalidGenesisIndex
+        )
     }
 
     pub fn is_rebroadcastable(self) -> bool {
         use ConsensusFfiResponse::*;
 
-        match self {
+        !matches!(
+            self,
             DeserializationError
-            | InvalidResult
-            | Unverifiable
-            | DuplicateEntry
-            | Stale
-            | IncorrectFinalizationSession
-            | BlockTooEarly
-            | ExpiryTooLate
-            | VerificationFailed
-            | NonexistingSenderAccount
-            | DuplicateNonce
-            | NonceTooLarge
-            | TooLowEnergy
-            | ConsensusShutDown => false,
-            _ => true,
-        }
+                | InvalidResult
+                | Unverifiable
+                | DuplicateEntry
+                | Stale
+                | IncorrectFinalizationSession
+                | BlockTooEarly
+                | ExpiryTooLate
+                | VerificationFailed
+                | NonexistingSenderAccount
+                | DuplicateNonce
+                | NonceTooLarge
+                | TooLowEnergy
+                | ConsensusShutDown
+                | InvalidGenesisIndex
+        )
     }
 }
 
@@ -296,6 +293,7 @@ impl TryFrom<i64> for ConsensusFfiResponse {
             17 => Ok(DuplicateNonce),
             18 => Ok(NonceTooLarge),
             19 => Ok(TooLowEnergy),
+            20 => Ok(InvalidGenesisIndex),
             _ => Err(anyhow!("Unsupported FFI return code ({})", value)),
         }
     }
