@@ -28,9 +28,9 @@ ENV CONSENSUS_PROFILING="${consensus_profiling}"
 SHELL ["/bin/bash", "-c"]
 RUN /build/scripts/build-binaries.sh "instrumentation,collector" "release" && \
     mkdir -p /out/{release,debug} && \
-    cp /build/concordium-node/target/release/{concordium-node,p2p_bootstrapper-cli,node-collector,node-collector-backend} /out/release/ && \
+    cp /build/concordium-node/target/release/{concordium-node,p2p_bootstrapper-cli,node-collector} /out/release/ && \
     /build/scripts/build-binaries.sh "instrumentation,collector" && \
-    cp /build/concordium-node/target/debug/{concordium-node,p2p_bootstrapper-cli,node-collector,node-collector-backend} /out/debug/ && \
+    cp /build/concordium-node/target/debug/{concordium-node,p2p_bootstrapper-cli,node-collector} /out/debug/ && \
     cp /build/scripts/start.sh /out/start.sh
 
 FROM ubuntu:20.04
