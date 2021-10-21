@@ -417,6 +417,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "collector-backend"
+version = "1.1.2"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "env_logger",
+ "futures",
+ "gotham",
+ "gotham_derive",
+ "hyper",
+ "log",
+ "mime",
+ "rmp-serde",
+ "serde 1.0.126",
+ "serde_json 1.0.64",
+ "structopt",
+ "tokio",
+ "twox-hash",
+]
+
+[[package]]
 name = "combine"
 version = "4.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -428,7 +449,7 @@ dependencies = [
 
 [[package]]
 name = "concordium_node"
-version = "1.1.2"
+version = "1.1.3"
 dependencies = [
  "anyhow",
  "app_dirs2",
@@ -440,6 +461,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "chrono",
  "circular-queue",
+ "collector-backend",
  "criterion",
  "crossbeam-channel",
  "crypto_common",

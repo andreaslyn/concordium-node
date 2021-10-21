@@ -1,7 +1,12 @@
 # Changelog
 
 ## Unreleased changes
+- Fix a bug due to incorrect use of LMDB database environments where a node
+  would crash if queried at specific times.
 
+## concordium-node 1.1.3
+
+- Fix a number of bugs that led to node crashes due to failed block lookup in some situations.
 - Support custom path for genesis data via `CONCORDIUM_NODE_CONSENSUS_GENESIS_DATA_FILE`.
 
 ## concordium-node 1.1.2
