@@ -32,7 +32,7 @@ pipeline {
                           --label genesis_ref="${genesis_ref}" \
                           --label genesis_path="${genesis_path}" \
                           -t "${image_name}" \
-                          -f scripts/testnet-deployments/genesis.Dockerfile \
+                          -f scripts/node/genesis.Dockerfile \
                           --ssh default \
                           --no-cache \
                           .

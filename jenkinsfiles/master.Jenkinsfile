@@ -34,7 +34,7 @@ pipeline {
                       --label ghc_version="${ghc_version}" \
                       --label consensus_profiling="${CONSENSUS_PROFILING}" \
                       -t "${universal_image_name}" \
-                      -f ./scripts/testnet-deployments/universal.Dockerfile \
+                      -f ./scripts/node/universal.Dockerfile \
                       .
                 '''
             }
@@ -52,7 +52,7 @@ pipeline {
                       --label universal_image_name="${universal_image_name}" \
                       --label build_type="${BUILD_TYPE}" \
                       -t "${image_name}" \
-                      -f scripts/testnet-deployments/bootstrapper.Dockerfile \
+                      -f scripts/node/bootstrapper.Dockerfile \
                       .
                     docker push "${image_name}"
                 '''
@@ -73,7 +73,7 @@ pipeline {
                           --label universal_image_name="${universal_image_name}" \
                           --label build_type="${BUILD_TYPE}" \
                           -t "${image_name}" \
-                          -f scripts/testnet-deployments/node.Dockerfile \
+                          -f scripts/node/node.Dockerfile \
                           .
                         docker push "${image_name}"
                     '''
@@ -94,7 +94,7 @@ pipeline {
                       --label universal_image_name="${universal_image_name}" \
                       --label build_type="${BUILD_TYPE}" \
                       -t "${image_name}" \
-                      -f scripts/testnet-deployments/node-collector.Dockerfile \
+                      -f scripts/node/node-collector.Dockerfile \
                       .
                     docker push "${image_name}"
                 '''

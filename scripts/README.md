@@ -16,7 +16,7 @@ for the Docker images and for entrypoint for `supervisord` on the [opentestnet/s
 
 ## Testnet deployments
 
-The folder [`testnet-deployments`](./testnet-deployments) contains a set of scripts that create docker
+The folder [`testnet-deployments`](node) contains a set of scripts that create docker
 images with the different components of the project that can be used to create
 ad-hoc deployments and are used in testnet deployments.
 

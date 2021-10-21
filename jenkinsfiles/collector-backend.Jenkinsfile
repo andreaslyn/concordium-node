@@ -25,7 +25,7 @@ pipeline {
                       --label base_image_tag="${base_image_tag}" \
                       --label build_type="${BUILD_TYPE}" \
                       -t "${image_name}" \
-                      -f scripts/testnet-deployments/collector-backend.Dockerfile \
+                      -f scripts/node/collector-backend.Dockerfile \
                       .
                     docker push "${image_name}"
                 '''
