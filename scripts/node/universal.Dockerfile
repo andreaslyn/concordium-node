@@ -26,12 +26,10 @@ ARG consensus_profiling=false
 ENV CONSENSUS_PROFILING="${consensus_profiling}"
 # Enable brace expansion in the following 'RUN' directive.
 SHELL ["/bin/bash", "-c"]
+WORKDIR /target
 RUN /build/scripts/build-binaries.sh "instrumentation,collector" "release" && \
-    mkdir -p /out/{release,debug} && \
-    cp /build/concordium-node/target/release/{concordium-node,p2p_bootstrapper-cli,node-collector} /out/release/ && \
+    mkdir -p ./{release,debug} && \
+    cp /build/concordium-node/target/release/{concordium-node,p2p_bootstrapper-cli,node-collector} ./release/ && \
     /build/scripts/build-binaries.sh "instrumentation,collector" && \
-    cp /build/concordium-node/target/debug/{concordium-node,p2p_bootstrapper-cli,node-collector} /out/debug/ && \
-    cp /build/scripts/start.sh /out/start.sh
-
-FROM ubuntu:20.04
-COPY --from=build /out /out
+    cp /build/concordium-node/target/debug/{concordium-node,p2p_bootstrapper-cli,node-collector} ./debug/ && \
+    cp /build/scripts/start.sh ./start.sh \

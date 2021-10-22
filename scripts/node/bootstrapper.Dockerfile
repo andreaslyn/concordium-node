@@ -8,6 +8,6 @@ EXPOSE 8888
 RUN apt-get update && \
     apt-get install -y libpq-dev && \
     rm -rf /var/lib/apt/lists/*
-COPY --from=build "/out/${build_profile}/p2p_bootstrapper-cli" /p2p_bootstrapper-cli
-COPY --from=build /out/start.sh /start.sh
+COPY --from=build "/target/${build_profile}/p2p_bootstrapper-cli" /p2p_bootstrapper-cli
+COPY --from=build /target/start.sh /start.sh
 ENTRYPOINT ["/start.sh"]

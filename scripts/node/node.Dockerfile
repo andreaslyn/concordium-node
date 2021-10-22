@@ -15,7 +15,6 @@ EXPOSE 10000
 RUN apt-get update && \
     apt-get install -y ca-certificates libpq-dev && \
     rm -rf /var/lib/apt/lists/*
-COPY --from=build "/out/${build_profile}/concordium-node" /concordium-node
-COPY --from=build /out/libs/* /usr/lib/x86_64-linux-gnu/
-COPY --from=build /out/start.sh /start.sh
+COPY --from=build "/target/${build_profile}/concordium-node" /concordium-node
+COPY --from=build /target/start.sh /start.sh
 ENTRYPOINT ["/start.sh"]
