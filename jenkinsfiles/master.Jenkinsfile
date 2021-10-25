@@ -1,3 +1,4 @@
+@Library('concordium-pipelines') _
 pipeline {
     agent any
     environment {
@@ -9,11 +10,7 @@ pipeline {
     stages {
         stage('ecr-login') {
             steps {
-                sh 'aws ecr get-login-password \
-                        --region eu-west-1 \
-                    | docker login \
-                        --username AWS \
-                        --password-stdin 192549843005.dkr.ecr.eu-west-1.amazonaws.com'
+                ecrLogin(env.ecr_repo_domain, 'eu-west-1')
             }
         }
         stage('build-genesis') {
@@ -60,7 +57,7 @@ pipeline {
         }
         stage('build-bootstrapper') {
             environment {
-                image_repo = "${ecr_repo_base}/bootstrapper"
+                image_repo = "${ecr_repo_domain}/concordium/bootstrapper"
                 image_name = "${image_repo}:${image_tag}"
             }
             steps {
@@ -79,7 +76,7 @@ pipeline {
         }
         stage('build-node') {
             environment {
-                image_repo = "${ecr_repo_base}/node"
+                image_repo = "${ecr_repo_domain}/concordium/node"
                 image_name = "${image_repo}:${image_tag}"
             }
             steps {
@@ -98,7 +95,7 @@ pipeline {
         }
         stage('build-collector') {
             environment {
-                image_repo = "${ecr_repo_base}/node-collector"
+                image_repo = "${ecr_repo_domain}/concordium/node-collector"
                 image_name = "${image_repo}:${image_tag}"
             }
             steps {
