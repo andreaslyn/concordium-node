@@ -6,7 +6,5 @@ ARG genesis_path
 RUN --mount=type=ssh git clone --depth=1 --branch="${genesis_ref}" git@gitlab.com:Concordium/genesis-data.git /tmp/genesis-data && \
     mv /tmp/genesis-data/"${genesis_path}" /genesis-data && rm -rf /tmp/genesis-data
 
-FROM alpine:3.13
+FROM alpine:3
 COPY --from=data /genesis-data/genesis.dat /genesis.dat
-COPY ./copy-genesis-dat.sh /copy-genesis-dat.sh
-ENTRYPOINT ["/copy-genesis-dat.sh"]

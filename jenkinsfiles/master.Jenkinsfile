@@ -1,13 +1,11 @@
 pipeline {
     agent any
-
     environment {
         ecr_repo_base = '192549843005.dkr.ecr.eu-west-1.amazonaws.com/concordium'
         universal_image_repo = 'concordium/universal'
         universal_image_name = "${universal_image_repo}:${image_tag}"
         build_profile = 'release'
     }
-
     stages {
         stage('ecr-login') {
             steps {
@@ -18,7 +16,31 @@ pipeline {
                         --password-stdin 192549843005.dkr.ecr.eu-west-1.amazonaws.com'
             }
         }
-
+        stage('build-genesis') {
+            environment {
+                image_repo = "${ecr_repo_base}/node-genesis"
+                image_name = "${image_repo}:${image_tag}"
+            }
+            steps {
+                sshagent (credentials: ['jenkins-gitlab-ssh']) {
+                    sh '''\
+                        # Using '--no-cache' because we're cloning genesis data
+                        # and BuildKit (and '--ssh default') because the repo is on GitLab.
+                        DOCKER_BUILDKIT=1 docker build \
+                          --ssh default \
+                          --no-cache \
+                          --build-arg universal_image_name="${universal_image_name}" \
+                          --build-arg build_profile="${build_profile}" \
+                          --label universal_image_name="${universal_image_name}" \
+                          --label build_profile="${build_profile}" \
+                          -t "${image_name}" \
+                          -f scripts/node/node-collector.Dockerfile \
+                          .
+                        docker push "${image_name}"
+                    '''
+                }
+            }
+        }
         stage('build-universal') {
             steps {
                 sh '''\
@@ -55,29 +77,25 @@ pipeline {
                 '''
             }
         }
-
         stage('build-node') {
             environment {
                 image_repo = "${ecr_repo_base}/node"
                 image_name = "${image_repo}:${image_tag}"
             }
             steps {
-                sshagent (credentials: ['jenkins-gitlab-ssh']) {
-                    sh '''\
-                        docker build \
-                          --build-arg universal_image_name="${universal_image_name}" \
-                          --build-arg build_profile="${build_profile}" \
-                          --label universal_image_name="${universal_image_name}" \
-                          --label build_profile="${build_profile}" \
-                          -t "${image_name}" \
-                          -f scripts/node/node.Dockerfile \
-                          .
-                        docker push "${image_name}"
-                    '''
-                }
+                sh '''\
+                    docker build \
+                      --build-arg universal_image_name="${universal_image_name}" \
+                      --build-arg build_profile="${build_profile}" \
+                      --label universal_image_name="${universal_image_name}" \
+                      --label build_profile="${build_profile}" \
+                      -t "${image_name}" \
+                      -f scripts/node/node.Dockerfile \
+                      .
+                    docker push "${image_name}"
+                '''
             }
         }
-
         stage('build-collector') {
             environment {
                 image_repo = "${ecr_repo_base}/node-collector"
