@@ -29,5 +29,5 @@ SHELL ["/bin/bash", "-c"]
 WORKDIR /target
 RUN for build_profile in release debug; do \
         mkdir -p "./${build_profile}" && \
-        cp "/build/concordium-node/${build_profile}"/{concordium-node,p2p_bootstrapper-cli,node-collector} "./${build_profile}/"; \
+        cp "/build/concordium-node/target/${build_profile}"/{concordium-node,p2p_bootstrapper-cli,node-collector} "./${build_profile}/"; \
     done
