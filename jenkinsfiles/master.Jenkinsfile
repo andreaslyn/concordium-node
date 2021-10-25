@@ -2,7 +2,7 @@
 pipeline {
     agent any
     environment {
-        ecr_repo_base = '192549843005.dkr.ecr.eu-west-1.amazonaws.com/concordium'
+        ecr_repo_domain = '192549843005.dkr.ecr.eu-west-1.amazonaws.com'
         universal_image_repo = 'concordium/universal'
         universal_image_name = "${universal_image_repo}:${image_tag}"
         build_profile = 'release'
@@ -26,6 +26,7 @@ pipeline {
                         DOCKER_BUILDKIT=1 docker build \
                           --ssh default \
                           --no-cache \
+                          --pull \
                           --build-arg universal_image_name="${universal_image_name}" \
                           --build-arg build_profile="${build_profile}" \
                           --label universal_image_name="${universal_image_name}" \
@@ -42,6 +43,7 @@ pipeline {
             steps {
                 sh '''\
                     docker build \
+                      --pull \
                       --build-arg base_image_tag="${base_image_tag}" \
                       --build-arg static_libraries_image_tag="${static_libraries_image_tag}" \
                       --build-arg ghc_version="${ghc_version}" \
@@ -50,7 +52,6 @@ pipeline {
                       --label ghc_version="${ghc_version}" \
                       -t "${universal_image_name}" \
                       -f ./scripts/node/universal.Dockerfile \
-                      --pull \
                       .
                 '''
             }

@@ -27,6 +27,7 @@ RUN CONSENSUS_PROFILING="${consensus_profiling}" /build/scripts/build-binaries.s
 # Evaluate the following RUN command in Bash to allow brace expansion.
 SHELL ["/bin/bash", "-c"]
 WORKDIR /target
-RUN mkdir -p ./{release,debug} && \
-    cp /build/concordium-node/target/release/{concordium-node,p2p_bootstrapper-cli,node-collector} ./release/ && \
-    cp /build/concordium-node/target/debug/{concordium-node,p2p_bootstrapper-cli,node-collector} ./debug/
+RUN for build_profile in release debug; do \
+        mkdir -p "./${build_profile}" && \
+        cp /build/concordium-node/"${build_profile}"/release/{concordium-node,p2p_bootstrapper-cli,node-collector} "./${build_profile}/"; \
+    done
