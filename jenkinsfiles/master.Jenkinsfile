@@ -13,35 +13,10 @@ pipeline {
                 ecrLogin(env.ecr_repo_domain, 'eu-west-1')
             }
         }
-        stage('build-genesis') {
-            environment {
-                image_repo = "${ecr_repo_domain}/concordium/node-genesis"
-                image_name = "${image_repo}:${image_tag}"
-            }
-            steps {
-                sshagent (credentials: ['jenkins-gitlab-ssh']) {
-                    sh '''\
-                        # Using '--no-cache' because we're cloning genesis data
-                        # and BuildKit (and '--ssh default') because the repo is on GitLab.
-                        DOCKER_BUILDKIT=1 docker build \
-                          --ssh default \
-                          --no-cache \
-                          --pull \
-                          --build-arg=genesis_tag=${genesis_tag} \
-                          --build-arg=genesis_path=${genesis_path} \
-                          --label=genesis_ref=${genesis_ref} \
-                          --label=genesis_path=${genesis_path} \
-                          -t "${image_name}" \
-                          -f scripts/node/genesis.Dockerfile \
-                          .
-                        docker push "${image_name}"
-                    '''
-                }
-            }
-        }
         stage('build-universal') {
             steps {
                 sh '''\
+                    # Using '--pull' to ensure that we build from the latest base images.
                     docker build \
                       --pull \
                       --build-arg=base_image_tag="${base_image_tag}" \
