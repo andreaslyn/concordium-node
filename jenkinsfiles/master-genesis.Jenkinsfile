@@ -26,9 +26,9 @@ pipeline {
                           --no-cache \
                           --pull \
                           --build-arg=tag=${tag} \
-                          --build-arg=path=${path} \
+                          --build-arg=dir_path=${dir_path} \
                           --label=tag=${tag} \
-                          --label=path=${path} \
+                          --label=dir_path=${dir_path} \
                           -t "${image_name}" \
                           -f scripts/node/genesis.Dockerfile \
                           .
