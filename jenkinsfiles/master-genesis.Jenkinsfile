@@ -25,10 +25,10 @@ pipeline {
                           --ssh default \
                           --no-cache \
                           --pull \
-                          --build-arg=genesis_tag=${genesis_tag} \
-                          --build-arg=genesis_path=${genesis_path} \
-                          --label=genesis_ref=${genesis_ref} \
-                          --label=genesis_path=${genesis_path} \
+                          --build-arg=tag=${tag} \
+                          --build-arg=path=${path} \
+                          --label=tag=${tag} \
+                          --label=path=${path} \
                           -t "${image_name}" \
                           -f scripts/node/genesis.Dockerfile \
                           .
