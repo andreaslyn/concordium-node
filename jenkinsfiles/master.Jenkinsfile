@@ -50,7 +50,7 @@ pipeline {
                       --label ghc_version="${ghc_version}" \
                       -t "${universal_image_name}" \
                       -f ./scripts/node/universal.Dockerfile \
-                      -- pull \
+                      --pull \
                       .
                 '''
             }
