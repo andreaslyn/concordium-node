@@ -15,7 +15,7 @@ pipeline {
         }
         stage('build-genesis') {
             environment {
-                image_repo = "${ecr_repo_base}/node-genesis"
+                image_repo = "${ecr_repo_domain}/concordium/node-genesis"
                 image_name = "${image_repo}:${image_tag}"
             }
             steps {
@@ -27,12 +27,12 @@ pipeline {
                           --ssh default \
                           --no-cache \
                           --pull \
-                          --build-arg universal_image_name="${universal_image_name}" \
-                          --build-arg build_profile="${build_profile}" \
-                          --label universal_image_name="${universal_image_name}" \
-                          --label build_profile="${build_profile}" \
+                          --build-arg=genesis_tag=${genesis_tag} \
+                          --build-arg=genesis_path=${genesis_path} \
+                          --label=genesis_ref=${genesis_ref} \
+                          --label=genesis_path=${genesis_path} \
                           -t "${image_name}" \
-                          -f scripts/node/node-collector.Dockerfile \
+                          -f scripts/node/genesis.Dockerfile \
                           .
                         docker push "${image_name}"
                     '''
@@ -44,12 +44,12 @@ pipeline {
                 sh '''\
                     docker build \
                       --pull \
-                      --build-arg base_image_tag="${base_image_tag}" \
-                      --build-arg static_libraries_image_tag="${static_libraries_image_tag}" \
-                      --build-arg ghc_version="${ghc_version}" \
-                      --label base_image_tag="${base_image_tag}" \
-                      --label static_libraries_image_tag="${static_libraries_image_tag}" \
-                      --label ghc_version="${ghc_version}" \
+                      --build-arg=base_image_tag="${base_image_tag}" \
+                      --build-arg=static_libraries_image_tag="${static_libraries_image_tag}" \
+                      --build-arg=ghc_version="${ghc_version}" \
+                      --label=base_image_tag="${base_image_tag}" \
+                      --label=static_libraries_image_tag="${static_libraries_image_tag}" \
+                      --label=ghc_version="${ghc_version}" \
                       -t "${universal_image_name}" \
                       -f ./scripts/node/universal.Dockerfile \
                       .
@@ -64,10 +64,10 @@ pipeline {
             steps {
                 sh '''\
                     docker build \
-                      --build-arg universal_image_name="${universal_image_name}" \
-                      --build-arg build_profile="${build_profile}" \
-                      --label universal_image_name="${universal_image_name}" \
-                      --label build_profile="${build_profile}" \
+                      --build-arg=universal_image_name="${universal_image_name}" \
+                      --build-arg=build_profile="${build_profile}" \
+                      --label=universal_image_name="${universal_image_name}" \
+                      --label=build_profile="${build_profile}" \
                       -t "${image_name}" \
                       -f scripts/node/bootstrapper.Dockerfile \
                       .
@@ -83,10 +83,10 @@ pipeline {
             steps {
                 sh '''\
                     docker build \
-                      --build-arg universal_image_name="${universal_image_name}" \
-                      --build-arg build_profile="${build_profile}" \
-                      --label universal_image_name="${universal_image_name}" \
-                      --label build_profile="${build_profile}" \
+                      --build-arg=universal_image_name="${universal_image_name}" \
+                      --build-arg=build_profile="${build_profile}" \
+                      --label=universal_image_name="${universal_image_name}" \
+                      --label=build_profile="${build_profile}" \
                       -t "${image_name}" \
                       -f scripts/node/node.Dockerfile \
                       .
@@ -102,10 +102,10 @@ pipeline {
             steps {
                 sh '''\
                     docker build \
-                      --build-arg universal_image_name="${universal_image_name}" \
-                      --build-arg build_profile="${build_profile}" \
-                      --label universal_image_name="${universal_image_name}" \
-                      --label build_profile="${build_profile}" \
+                      --build-arg=universal_image_name="${universal_image_name}" \
+                      --build-arg=build_profile="${build_profile}" \
+                      --label=universal_image_name="${universal_image_name}" \
+                      --label=build_profile="${build_profile}" \
                       -t "${image_name}" \
                       -f scripts/node/node-collector.Dockerfile \
                       .
