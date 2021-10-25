@@ -17,9 +17,7 @@ The image built from `genesis.Dockerfile` contains just this file and a script f
 
 ## docker-compose
 
-The following example shows a minimal setup of a node and an accompanying collector.
-
-TODO NOT YET TESTED
+The following example shows a minimal setup of a node and an accompanying collector:
 
 ```yaml
 version: '3'
@@ -68,6 +66,16 @@ volumes:
   config:
 networks:
   concordium:
+```
+
+Run the script using `docker-compose`:
+
+```shell
+TAG=<tag>
+export GENESIS_IMAGE="192549843005.dkr.ecr.eu-west-1.amazonaws.com/concordium/node-genesis:${TAG}"
+export NODE_IMAGE="192549843005.dkr.ecr.eu-west-1.amazonaws.com/concordium/node:${TAG}"
+export NODE_COLLECTOR_IMAGE="192549843005.dkr.ecr.eu-west-1.amazonaws.com/concordium/node-collector:${TAG}"
+docker-compose up
 ```
 
 ## Kubernetes
