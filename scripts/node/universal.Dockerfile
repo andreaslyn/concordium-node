@@ -2,7 +2,7 @@ ARG static_libraries_image_tag
 ARG base_image_tag
 
 # Build static consensus libraries.
-FROM concordium/static-libraries:${static_libraries_image_tag} as static-builder
+FROM concordium/static-libraries:${static_libraries_image_tag} as build-static
 WORKDIR /build
 COPY . .
 ARG ghc_version
@@ -13,10 +13,9 @@ RUN GHC_VERSION="${ghc_version}" \
 FROM concordium/base:${base_image_tag} as build
 WORKDIR /build
 COPY . .
-# Copy static libraries that were built by the static-builder into the correct place
-# (/build/concordium-node/deps/static-libs/linux).
+# Copy static libraries into the correct place ('/build/concordium-node/deps/static-libs/linux').
 ARG ghc_version
-COPY --from=static-builder "/build/static-consensus-${ghc_version}.tar.gz" /tmp/static-consensus.tar.gz
+COPY --from=build-static "/build/static-consensus-${ghc_version}.tar.gz" /tmp/static-consensus.tar.gz
 RUN tar -C /tmp -xf /tmp/static-consensus.tar.gz && \
     mkdir -p /build/concordium-node/deps/static-libs && \
     mv /tmp/target /build/concordium-node/deps/static-libs/linux && \
@@ -25,10 +24,9 @@ RUN tar -C /tmp -xf /tmp/static-consensus.tar.gz && \
 ARG consensus_profiling=false
 RUN CONSENSUS_PROFILING="${consensus_profiling}" /build/scripts/build-binaries.sh "instrumentation,collector" "release" && \
     CONSENSUS_PROFILING="${consensus_profiling}" /build/scripts/build-binaries.sh "instrumentation,collector"
-# Enable brace expansion in the following 'RUN' directive.
+# Evaluate the following RUN command in Bash to allow brace expansion.
 SHELL ["/bin/bash", "-c"]
 WORKDIR /target
 RUN mkdir -p ./{release,debug} && \
     cp /build/concordium-node/target/release/{concordium-node,p2p_bootstrapper-cli,node-collector} ./release/ && \
-    cp /build/concordium-node/target/debug/{concordium-node,p2p_bootstrapper-cli,node-collector} ./debug/ && \
-    cp /build/scripts/start.sh ./start.sh \
+    cp /build/concordium-node/target/debug/{concordium-node,p2p_bootstrapper-cli,node-collector} ./debug/
