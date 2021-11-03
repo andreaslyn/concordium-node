@@ -17,12 +17,18 @@ import Prelude hiding (lookup)
 
 type Prefix = BS.ByteString
 type Key = BS.ByteString
+
+-- | A branch in a tree node, it consists of prefix byte for the branch and a reference to the node for this branch.
 type Branch a = (Word8, BufferedRef (Trie a))
 
+-- | Compressed trie with keys fixed as bytestrings.
 data Trie a = Trie {
-   prefix :: Prefix
- , value :: Maybe a
- , branches :: V.Vector (Branch a) }
+                -- | A compressed prefix of this node and the branches.
+                prefix :: Prefix,
+                -- | The value in this node.
+                 value :: Maybe a,
+                -- | The branches from this node which are expected to be sorted.
+                branches :: V.Vector (Branch a) }
   deriving (Show)
 
 instance (BlobStorable m a) => BlobStorable m (Trie a) where
@@ -91,28 +97,43 @@ instance (BlobStorable m a) => BlobStorable m (Trie a) where
         branchLength <- fromIntegral <$> getWord8
         sequence <$> V.replicateM branchLength loadBranch
 
+-- | A trie containing no keys.
 empty :: Trie a
 empty = Trie { prefix = BS.empty, value = Nothing, branches = V.empty }
 
+-- | Check if the trie contains any values.
+-- Assumes the trie is compressed.
 isEmpty :: Trie a -> Bool
 isEmpty trie = isNothing (value trie) && V.null (branches trie)
 
-isSingleBranchNode :: Trie a -> Bool
-isSingleBranchNode trie = 1 == V.length (branches trie)
-
+-- | Construct a trie with key and value.
 singleton :: Prefix -> a -> Trie a
 singleton prefix value = Trie {prefix = prefix, value = Just value, branches = V.empty}
 
+-- | Construct trie node with given prefix and branches and no value.
 makeBranchNode :: Prefix -> V.Vector (Branch a) -> Trie a
 makeBranchNode prefix branches = Trie{prefix = prefix, value = Nothing, branches = branches}
 
+-- | Construct branch with a given byte and trie node.
 makeBranch :: MonadIO m => Word8 -> Trie a -> m (Branch a)
 makeBranch prefix node = do bnode <- makeBufferedRef node
                             return (prefix, bnode)
 
+-- | Take the head and tail of a vector.
 unconsVec :: V.Vector a -> Maybe (a, V.Vector a)
 unconsVec xs = (, unsafeTail xs) <$> (xs !? 0)
 
+-- | Find the shared prefix between two ByteStrings and return the shared prefix plus what remains of each bytestring.
+sharedPrefixOf :: Prefix -> Prefix -> (Prefix, Prefix, Prefix)
+sharedPrefixOf keyL keyR =
+  let sharedUntil = fromMaybe (min (BS.length keyL) (BS.length keyR)) $ L.findIndex (uncurry (/=)) (BS.zip keyL keyR)
+      shared = BS.Unsafe.unsafeTake sharedUntil keyL -- Does not check bounds
+      remainingKeyL = BS.Unsafe.unsafeDrop sharedUntil keyL -- Does not check bounds
+      remainingKeyR = BS.Unsafe.unsafeDrop sharedUntil keyR -- Does not check bounds
+  in (shared, remainingKeyL, remainingKeyR)
+
+-- | Lookup a givent key in a trie.
+-- Assumes each node have branches sorted by their prefix byte, likewise it ensures inserted branches follow this.
 lookup :: BlobStorable m a => Key -> Trie a -> m (Maybe a)
 lookup key node =
   -- If the key is empty the value is in the current node
@@ -132,21 +153,13 @@ lookup key node =
        Just (remainingKey, nodeRef) -> loadBufferedRef nodeRef >>= lookup remainingKey
        Nothing -> return Nothing
 
-sharedPrefixOf :: Prefix -> Prefix -> (Prefix, Prefix, Prefix)
-sharedPrefixOf keyL keyR =
-  let sharedUntil = fromMaybe (min (BS.length keyL) (BS.length keyR)) $ L.findIndex (uncurry (/=)) (BS.zip keyL keyR)
-      shared = BS.Unsafe.unsafeTake sharedUntil keyL -- Does not check bounds
-      remainingKeyL = BS.Unsafe.unsafeDrop sharedUntil keyL -- Does not check bounds
-      remainingKeyR = BS.Unsafe.unsafeDrop sharedUntil keyR -- Does not check bounds
-  in (shared, remainingKeyL, remainingKeyR)
-
 -- | A generalized update function which can be used to insert, delete and update values of the map given some key.
 -- The update function will receive the current value (Just a) or Nothing if the value is currently not in the map.
 -- If the result of the function will replace the value, if the result is Nothing the key will be removed.
 --
 -- It will ensure to compress branches when inserting and removing keys.
 --
--- Assumes each node have branches sorted by their prefix, likewise it ensures inserted branches follow this.
+-- Assumes each node have branches sorted by their prefix byte, likewise it ensures inserted branches follow this.
 alter :: BlobStorable m a => (Maybe a -> Maybe a) -> Key -> Trie a -> m (Trie a)
 alter alterFn key node =
   if isEmpty node then
@@ -201,16 +214,23 @@ alter alterFn key node =
                               return node {branches = V.concat [lessBranches, V.singleton updatedBranch, greaterBranches]}
   where
     -- | Run the alterFn with Nothing and return the node unmodified if the result is Nothing otherwise it calls the provided function with the result.
-    -- Assumes the map did not contain
+    -- Use only when the trie does not contain the key
     whenInsertValue insertFn = case alterFn Nothing of
        Nothing -> return node
        Just value -> insertFn value
 
+    -- | Check if the node contains only a single branch.
+    isSingleBranchNode :: Trie a -> Bool
+    isSingleBranchNode trie = 1 == V.length (branches trie)
+
+-- | Insert new key and value into the trie.
 insert ::  BlobStorable m a => Key -> a -> Trie a -> m (Trie a)
 insert key value = alter (const (Just value)) key
 
+-- | Delete a key from the trie, will not modify the trie if the key is not in the trie.
 delete :: BlobStorable m a => Key -> Trie a -> m (Trie a)
 delete = alter (const Nothing)
 
+-- | Update a value at a given key, will not modify the trie if the key is not in the trie.
 update :: BlobStorable m a => (a -> Maybe a) -> Key -> Trie a -> m (Trie a)
 update upd = alter (>>= upd)
