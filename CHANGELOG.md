@@ -6,6 +6,8 @@
 - Faster state queries by avoiding locking the block state file when reading.
 - Fix a bug by shutting down RPC before the node, which caused the node to crash
   when attempting a graceful shutdown while processing RPC requests.
+- The node now drops all connections on an unrecognized protocol update and
+  refuses to accept new transactions.
 
 ## concordium-node 1.1.3
 
