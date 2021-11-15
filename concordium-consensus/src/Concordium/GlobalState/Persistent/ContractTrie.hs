@@ -23,13 +23,21 @@ import Data.Functor (($>))
 import Data.Serialize.Put (runPut)
 import System.IO.Unsafe (unsafePerformIO)
 
-type Prefix = BS.ByteString
-type Key = BS.ByteString
+-- Copy on write
 
--- TODO: Consider adding hashedBufferedRef only to borrowed, to avoid calculating the hash and making a ref until ownership is lost.
-data Cow a = Borrowed a
+-- | Implement "Copy on write(Cow)" for a given type implementing BlobStorable and MHashable.
+-- A value of type Cow can be owned which means writing will mutate it, or it can be borrowed
+-- meaning it will copy the value when writing.
+--
+-- The purpose is to allow mutations for local temporary state and then later mark the type
+-- as final, meaning no more mutations are allowed.
+--
+-- The type is also combined with HashedBufferedRef, which will allow us to postpone calculating
+-- the hash until it is marked final (borrowed).
+data Cow a = Borrowed (HashedBufferedRef a)
            | Owned (IORef a)
 
+-- | This instance is not safe and is only meant for debugging.
 instance (Show a) => Show (Cow a) where
   show cow = case cow of
     Borrowed a -> "Borrowed " ++ show a
@@ -38,35 +46,52 @@ instance (Show a) => Show (Cow a) where
 instance (BlobStorable m a, MHashableTo m H.Hash a) => BlobStorable m (Cow a) where
   store cow = fst <$> storeUpdate cow
   storeUpdate cow = do
-    v <- liftIO $ readCow cow
+    v <- borrowCow cow
     (putV, v') <- storeUpdate v
-    return (putV, newBorrowedCow v')
+    return (putV, Borrowed v')
   load = do getV <- load
-            return $ newBorrowedCow <$> getV
+            return $ Borrowed <$> getV
 
-newBorrowedCow :: a -> Cow a
-newBorrowedCow = Borrowed
+-- | Construct a cow which is borrowed.
+newBorrowedCow :: (BlobStorable m a, MHashableTo m H.Hash a) => a -> m (Cow a)
+newBorrowedCow value = Borrowed <$> makeHashedBufferedRef value
 
-newOwnedCow :: a -> IO (Cow a)
-newOwnedCow value = Owned <$> newIORef value
+-- | Construct a cow which is owned.
+newOwnedCow :: (BlobStorable m a) => a -> m (Cow a)
+newOwnedCow value = liftIO $ Owned <$> newIORef value
 
+-- | Check if a given cow is borrowed.
 isBorrowedCow :: Cow a -> Bool
 isBorrowedCow cow = case cow of
   Borrowed _ -> True
   _ -> False
 
+-- | Write to a cow, which will return a new copy only if the cow is borrowed.
+-- Otherwise it will mutate the cow directly.
 writeCow :: a -> Cow a -> IO (Maybe (Cow a))
 writeCow value cow = case cow of
   Owned ref -> writeIORef ref value $> Nothing
   Borrowed _ -> Just . Owned <$> newIORef value
 
-readCow :: Cow a -> IO a
+-- | Read the current value in a Cow.
+readCow :: (BlobStorable m a, MHashableTo m H.Hash a) => Cow a -> m a
 readCow cow = case cow of
-  Owned ref -> readIORef ref
-  Borrowed a -> return a
+  Owned ref -> liftIO $ readIORef ref
+  Borrowed a -> refLoad a
+
+-- | Handover ownership of a Cow, making it copy on future writes.
+borrowCow :: (BlobStorable m a, MHashableTo m H.Hash a) => Cow a -> m (HashedBufferedRef a)
+borrowCow cow = case cow of
+  Owned ioref -> liftIO (readIORef ioref) >>= makeHashedBufferedRef
+  Borrowed ref -> return ref
+
+-- Contract Trie
+
+type Prefix = BS.ByteString
+type Key = BS.ByteString
 
 -- | A branch in a tree node, it consists of prefix byte for the branch and a reference to the node for this branch.
-type Branch a = (Word8, Cow (HashedBufferedRef (Trie a)))
+type Branch a = (Word8, Cow (Trie a))
 
 -- | Compressed trie with keys fixed as bytestrings.
 data Trie a = Trie {
@@ -89,7 +114,7 @@ instance (BlobStorable m a, MHashableTo m H.Hash a) => MHashableTo m H.Hash (Tri
     where
       hashBranch :: Branch a -> m H.Hash
       hashBranch branch = do
-        ref <- liftIO $ readCow (snd branch)
+        ref <- readCow (snd branch)
         getHashM ref
 
 instance (BlobStorable m a, MHashableTo m H.Hash a) => BlobStorable m (Trie a) where
@@ -178,8 +203,7 @@ makeBranchNode prefix branches = Trie { prefix = prefix, value = Nothing, branch
 
 -- | Construct branch with a given byte and trie node.
 makeBranch :: (BlobStorable m a, MHashableTo m H.Hash a) => Word8 -> Trie a -> m (Branch a)
-makeBranch prefix node = do bnode <- makeHashedBufferedRef node
-                            cow <- liftIO $ newOwnedCow bnode
+makeBranch prefix node = do cow <- newOwnedCow node
                             return (prefix, cow)
 
 -- | Checks if a node only have borrowed branches, which in turn means it must copy before mutating.
@@ -188,7 +212,7 @@ isBorrowedNode node = V.all (isBorrowedCow . snd) $ branches node
 
 -- | Load the node reference in a branch.
 readBranch :: (BlobStorable m a, MHashableTo m H.Hash a) => Branch a -> m (Trie a)
-readBranch (_, cow) = liftIO (readCow cow) >>= refLoad
+readBranch branch = readCow $ snd branch
 
 -- | Take the head and tail of a vector.
 unconsVec :: V.Vector a -> Maybe (a, V.Vector a)
@@ -296,10 +320,9 @@ alter alterFn key node =
        Just value -> insertFn value
 
     -- | Update the node in a branch, copying it if necessary.
-    writeBranch :: (BlobStorable m a, MHashableTo m H.Hash a) => Branch a -> Trie a -> m (Maybe (Branch a))
+    writeBranch :: (BlobStorable m a) => Branch a -> Trie a -> m (Maybe (Branch a))
     writeBranch (byte, cow) newBranchNode = do
-      nodeRef <- makeHashedBufferedRef newBranchNode
-      maybeNewBranch <- liftIO $ writeCow nodeRef cow
+      maybeNewBranch <- liftIO $ writeCow newBranchNode cow
       return $ (byte,) <$> maybeNewBranch
 
 -- | Insert new key and value into the trie.
@@ -330,8 +353,8 @@ borrowTrie node =
   where
     borrowBranch :: (BlobStorable m a, MHashableTo m H.Hash a) => Branch a -> m (Branch a)
     borrowBranch (byte, cow) = do
-      branchNode <- liftIO (readCow cow) >>= refLoad
+      branchNode <- readCow cow
       borrowedNode <- borrowTrie branchNode
-      newCow <- newBorrowedCow <$> makeHashedBufferedRef borrowedNode
+      newCow <- newBorrowedCow borrowedNode
       return (byte, newCow)
 
