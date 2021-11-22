@@ -56,6 +56,7 @@ import Concordium.ProtocolUpdate
 import Concordium.Skov as Skov
 import Concordium.TimeMonad
 import Concordium.TimerMonad
+import Concordium.Utils.Serialization (failIfNonempty)
 
 -- |Handler configuration for supporting protocol updates.
 -- This handler defines an instance of 'HandlerConfigHandlers' that responds to finalization events
@@ -832,7 +833,7 @@ receiveBlock gi blockBS = withLatestExpectedVersion gi $
 receiveFinalizationMessage :: GenesisIndex -> ByteString -> MVR gsconf finconf UpdateResult
 receiveFinalizationMessage gi finMsgBS = withLatestExpectedVersion gi $
     \(EVersionedConfiguration (vc :: VersionedConfiguration gsconf finconf pv)) ->
-        case runGet getExactVersionedFPM finMsgBS of
+        case runGet (getExactVersionedFPM >>= failIfNonempty) finMsgBS of
             Left err -> do
                 logEvent Runner LLDebug $ "Could not deserialize finalization message: " ++ err
                 return ResultSerializationFail
@@ -842,7 +843,7 @@ receiveFinalizationMessage gi finMsgBS = withLatestExpectedVersion gi $
 receiveFinalizationRecord :: GenesisIndex -> ByteString -> MVR gsconf finconf UpdateResult
 receiveFinalizationRecord gi finRecBS = withLatestExpectedVersion gi $
     \(EVersionedConfiguration (vc :: VersionedConfiguration gsconf finconf pv)) ->
-        case runGet getExactVersionedFinalizationRecord finRecBS of
+        case runGet (getExactVersionedFinalizationRecord >>= failIfNonempty) finRecBS of
             Left err -> do
                 logEvent Runner LLDebug $ "Could not deserialized finalization record: " ++ err
                 return ResultSerializationFail
@@ -865,7 +866,7 @@ receiveCatchUpStatus ::
     CatchUpConfiguration ->
     MVR gsconf finconf UpdateResult
 receiveCatchUpStatus gi catchUpBS CatchUpConfiguration{..} =
-    case runGet getExactVersionedCatchUpStatus catchUpBS of
+    case runGet (getExactVersionedCatchUpStatus >>= failIfNonempty) catchUpBS of
         Left err -> do
             logEvent Runner LLDebug $ "Could not deserialize catch-up status message: " ++ err
             return ResultSerializationFail
@@ -942,7 +943,7 @@ getCatchUpRequest = do
 receiveTransaction :: ByteString -> MVR gsconf finconf UpdateResult
 receiveTransaction transactionBS = do
     now <- utcTimeToTransactionTime <$> currentTime
-    case runGet (getExactVersionedBlockItem now) transactionBS of
+    case runGet (getExactVersionedBlockItem now >>= failIfNonempty) transactionBS of
         Left err -> do
             logEvent Runner LLDebug err
             return ResultSerializationFail

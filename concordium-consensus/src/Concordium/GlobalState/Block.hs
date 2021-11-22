@@ -22,6 +22,7 @@ import Concordium.Types.HashableTo
 import Concordium.GlobalState.Parameters
 import Concordium.Crypto.SHA256 as Hash
 import qualified Concordium.Crypto.BlockSignature as Sig
+import Concordium.Utils.Serialization (failIfNonempty)
 
 import Concordium.GlobalState.Finalization
 
@@ -433,7 +434,7 @@ instance (IsProtocolVersion pv) => DecodeBlock pv PendingBlock where
 -- |Deserialize a pending block with a version tag.
 deserializeExactVersionedPendingBlock :: IsProtocolVersion pv => SProtocolVersion pv -> ByteString.ByteString -> UTCTime -> Either String PendingBlock
 deserializeExactVersionedPendingBlock spv blockBS rectime =
-    case runGet (getVersionedBlock spv rectime) blockBS of
+    case runGet (getVersionedBlock spv rectime >>= failIfNonempty) blockBS of
         Left err -> Left $ "Block deserialization failed: " ++ err
         Right block1 -> Right block1
 
